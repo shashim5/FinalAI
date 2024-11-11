@@ -1,0 +1,33 @@
+.horizontal-scroll-container {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.horizontal-scroll-container::-webkit-scrollbar {
+  display: none;
+}
+
+.scroll-fade-edges {
+  mask-image: linear-gradient(to right, transparent, black 40px, black calc(100% - 40px), transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 40px, black calc(100% - 40px), transparent);
+}
+
+.code-block {
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  background: #1a1a1a;
+  padding: 1rem;
+  border-radius: 8px;
+  margin: 1rem 0;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.card {
+  scroll-snap-align: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+
+.card:hover {
+  transform: translateY(-10px) scale(1.02);
+}
