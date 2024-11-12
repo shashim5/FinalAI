@@ -324,183 +324,82 @@ const App: React.FC = () => {
   };
 
   const startListening = useCallback((sessionId: string) => {
-    if ('webkitSpeechRecognition' in window) {
-      const SpeechRecognition = (window as any).webkitSpeechRecognition;
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
+    const session = aiSessions.find(s => s.id === sessionId);
 
-      // Update UI to show requesting permissions
-      setAiSessions(prev => prev.map(session =>
-        session.id === sessionId ? {
-          ...session,
-          response: session.response || '🎤 Checking microphone availability...',
-          isListening: false
-        } : session
-      ));
+    if (!session) return;
 
-      // First check if any audio devices are available
-      navigator.mediaDevices.enumerateDevices()
-        .then(devices => {
-          const hasAudioDevice = devices.some(device => device.kind === 'audioinput');
-          if (!hasAudioDevice) {
-            throw new Error('NO_MICROPHONE');
-          }
-          return navigator.mediaDevices.getUserMedia({ audio: true });
-        })
-        .catch(() => {
-          console.log('Microphone not available, entering simulation mode');
-          simulateRecording(sessionId);
-          setAiSessions(prev => prev.map(session =>
-            session.id === sessionId ? {
-              ...session,
-              isListening: true,
-              response: session.response || '🎤 Simulation mode: Recording...',
-              transcript: session.transcript || '' // Preserve existing transcript
-            } : session
-          ));
-          throw new Error('SIMULATION_MODE');
-        })
+    // Only start listening if speech recognition is available
+    if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+      const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+
+      // Request microphone access
+      navigator.mediaDevices.getUserMedia({ audio: true })
         .then(() => {
+          // Microphone is allowed, start speech recognition
+          recognition.continuous = true;
+          recognition.interimResults = true;
+
           recognition.onstart = () => {
             setIsRecording(true);
             setAiSessions(prev => prev.map(session =>
-              session.id === sessionId ? {
-                ...session,
-                isListening: true,
-                response: session.response || '🎤 Recording in progress... (Click Stop to pause)',
-                transcript: session.transcript || '' // Preserve existing transcript if resuming
-              } : session
+              session.id === sessionId ? { ...session, isListening: true } : session
             ));
           };
 
-          recognition.onresult = (event: any) => {
-            const currentSession = aiSessions.find(s => s.id === sessionId);
-            if (!currentSession?.isListening) return; // Don't process if stopped
+          recognition.onresult = (event) => {
+            const lastTranscript = event.results[event.results.length - 1];
+            const newTranscript = lastTranscript[0].transcript;
 
-            const existingTranscript = currentSession?.transcript || '';
-            let newTranscript = Array.from(event.results)
-              .map((result: any) => result[0])
-              .map((result: any) => result.transcript)
-              .join('');
-
-            // Clear any existing processing timeout
-            if (processingTimeoutRef.current) {
-              clearTimeout(processingTimeoutRef.current);
-            }
-
-            // Always append new transcript to existing one to maintain conversation continuity
-            const fullTranscript = existingTranscript + ' ' + newTranscript;
-
-            // Update UI with current transcript and recording state
+            // Update transcript in session state
+            const fullTranscript = session.transcript + ' ' + newTranscript;
             setAiSessions(prev => prev.map(session =>
               session.id === sessionId ? {
                 ...session,
                 transcript: fullTranscript.trim(),
-                question: session.question || '', // Preserve existing question
-                response: session.response || (isRecording
-                  ? '🎤 Recording in progress... (Click Stop to pause)'
-                  : '⏸️ Paused (Click Start to resume)'),
+                response: '🎤 Recording in progress... (Click Stop to pause)',
                 isListening: true
               } : session
             ));
-
-            // Wait for a 2-second pause before processing
-            processingTimeoutRef.current = setTimeout(async () => {
-              const updatedSession = aiSessions.find(s => s.id === sessionId);
-              if (updatedSession?.isListening &&
-                  fullTranscript.trim().length > 10 &&
-                  fullTranscript !== lastTranscriptRef.current) {
-                lastTranscriptRef.current = fullTranscript;
-                setAiSessions(prev => prev.map(session =>
-                  session.id === sessionId ? {
-                    ...session,
-                    response: '💭 Processing your input...',
-                    isListening: true,
-                    question: session.question || '', // Preserve existing question
-                    transcript: fullTranscript.trim() // Keep transcript for continuity
-                  } : session
-                ));
-                const response = await generateAIResponse(fullTranscript);
-                setAiSessions(prev => prev.map(session =>
-                  session.id === sessionId ? {
-                    ...session,
-                    question: fullTranscript,
-                    response,
-                    transcript: fullTranscript.trim(), // Keep transcript for reference
-                    isListening: true // Maintain recording state
-                  } : session
-                ));
-              }
-            }, 2000); // 2-second debounce
           };
 
-          recognition.onerror = (event: any) => {
-            setIsRecording(false);
+          recognition.onerror = (event) => {
             console.error('Speech recognition error:', event.error);
             let errorMessage = 'An error occurred. ';
-
-            switch(event.error) {
-              case 'network':
-                errorMessage += 'Network error. Please check your internet connection.';
-                break;
-              case 'not-allowed':
-                errorMessage += 'Microphone access denied. Please allow microphone access in your browser settings.';
-                break;
-              case 'no-speech':
-                // Don't show error for no speech, just keep listening
-                return;
-              default:
-                errorMessage += `Error: ${event.error}. Please try again.`;
+            if (event.error === 'not-allowed') {
+              errorMessage += 'Microphone access denied.';
             }
-
             setAiSessions(prev => prev.map(session =>
-              session.id === sessionId ? {
-                ...session,
-                isListening: false,
-                response: '❌ ' + errorMessage
-              } : session
+              session.id === sessionId ? { ...session, response: '❌ ' + errorMessage, isListening: false } : session
             ));
           };
 
           recognition.onend = () => {
             setIsRecording(false);
-            const currentSession = aiSessions.find(s => s.id === sessionId);
-            if (currentSession && !currentSession.response.includes('error')) {
-              setAiSessions(prev => prev.map(session =>
-                session.id === sessionId ? {
-                  ...session,
-                  isListening: false,
-                  response: session.response || '⏸️ Session paused. Click Start to resume recording.',
-                  transcript: session.transcript || '' // Preserve transcript when paused
-                } : session
-              ));
-            }
+            setAiSessions(prev => prev.map(session =>
+              session.id === sessionId ? {
+                ...session,
+                response: '⏸️ Session paused - Click Start Listening to resume',
+                isListening: false
+              } : session
+            ));
           };
 
           recognition.start();
           recognitionRef.current = recognition;
+
         })
         .catch(error => {
-          setIsRecording(false);
-          console.error('Microphone setup error:', error);
-          const errorMessage = error.message || 'Error: Unable to access microphone. Please check your microphone settings and try again.';
+          // Handle case where microphone access is denied
+          console.error('Microphone access denied:', error);
           setAiSessions(prev => prev.map(session =>
-            session.id === sessionId ? {
-              ...session,
-              response: '❌ ' + errorMessage,
-              isListening: false
-            } : session
+            session.id === sessionId ? { ...session, response: '❌ Microphone access denied.', isListening: false } : session
           ));
         });
+
     } else {
-      console.error('Speech recognition not supported');
+      console.error('Speech recognition is not supported in this browser.');
       setAiSessions(prev => prev.map(session =>
-        session.id === sessionId ? {
-          ...session,
-          response: 'Error: Speech recognition is not supported in this browser. Please try using Chrome.',
-          isListening: false
-        } : session
+        session.id === sessionId ? { ...session, response: '❌ Speech recognition is not supported.', isListening: false } : session
       ));
     }
   }, [aiSessions]);
