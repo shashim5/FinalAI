@@ -45,6 +45,7 @@
         }
         .error {
             color: #dc3545;
+html
         }
         #audioSources {
             width: 100%;
@@ -86,7 +87,240 @@
     </div>
 
     <script type="module">
-        import { setupSystemAudioCapture, setupSpeechRecognition } from '../src/services/aiService.ts';
+        // Audio processing configuration
+        const AUDIO_CONFIG = {
+            sampleRate: 48000,
+            fftSize: 2048,
+            smoothingTimeConstant: 0.8,
+            minDecibels: -90,
+            maxDecibels: -10,
+            noiseThreshold: -50,
+            voiceThreshold: -40
+        };
+
+        const setupSystemAudioCapture = async () => {
+            try {
+                const stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: {
+                        displaySurface: 'browser',
+                        width: { ideal: 1 },
+                        height: { ideal: 1 }
+                    },
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        channelCount: 2,
+                        sampleRate: AUDIO_CONFIG.sampleRate
+                    }
+                });
+
+                const audioTrack = stream.getAudioTracks()[0];
+                if (!audioTrack) {
+                    throw new Error('No audio track available');
+                }
+
+                // Configure audio track settings for optimal quality
+                const capabilities = audioTrack.getCapabilities();
+                if (capabilities.sampleRate) {
+                    await audioTrack.applyConstraints({
+                        sampleRate: { ideal: AUDIO_CONFIG.sampleRate }
+                    });
+                }
+
+                const audioStream = new MediaStream([audioTrack]);
+                stream.getVideoTracks().forEach(track => track.stop());
+
+                return audioStream;
+            } catch (error) {
+                console.error('Error capturing system audio:', error);
+                throw error;
+            }
+        };
+
+        const createAudioProcessor = async (audioContext, source) => {
+            // Create audio processing nodes
+            const analyser = audioContext.createAnalyser();
+            analyser.fftSize = AUDIO_CONFIG.fftSize;
+            analyser.smoothingTimeConstant = AUDIO_CONFIG.smoothingTimeConstant;
+            analyser.minDecibels = AUDIO_CONFIG.minDecibels;
+            analyser.maxDecibels = AUDIO_CONFIG.maxDecibels;
+
+            // Create dynamics compressor for better audio quality
+            const compressor = audioContext.createDynamicsCompressor();
+            compressor.threshold.value = -50;
+            compressor.knee.value = 40;
+            compressor.ratio.value = 12;
+            compressor.attack.value = 0;
+            compressor.release.value = 0.25;
+
+            // Create gain node for volume control
+            const gainNode = audioContext.createGain();
+            gainNode.gain.value = 1.5; // Boost volume slightly
+
+            // Create biquad filter for noise reduction
+            const highPassFilter = audioContext.createBiquadFilter();
+            highPassFilter.type = 'highpass';
+            highPassFilter.frequency.value = 80;
+            highPassFilter.Q.value = 0.7;
+
+            // Connect nodes
+            source.connect(highPassFilter);
+            highPassFilter.connect(compressor);
+            compressor.connect(gainNode);
+            gainNode.connect(analyser);
+            analyser.connect(audioContext.destination);
+
+            // Setup voice activity detection
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Float32Array(bufferLength);
+            let lastVoiceDetection = Date.now();
+            const VOICE_TIMEOUT = 1000;
+
+            const detectVoice = () => {
+                analyser.getFloatFrequencyData(dataArray);
+
+                // Calculate average volume in speech frequency range (300Hz - 3400Hz)
+                const startBin = Math.floor(300 / (AUDIO_CONFIG.sampleRate / AUDIO_CONFIG.fftSize));
+                const endBin = Math.floor(3400 / (AUDIO_CONFIG.sampleRate / AUDIO_CONFIG.fftSize));
+                let sum = 0;
+                let count = 0;
+
+                for (let i = startBin; i < endBin; i++) {
+                    sum += dataArray[i];
+                    count++;
+                }
+
+                const averageVolume = sum / count;
+                return averageVolume > AUDIO_CONFIG.voiceThreshold;
+            };
+
+            const processInterval = setInterval(() => {
+                if (detectVoice()) {
+                    lastVoiceDetection = Date.now();
+                }
+            }, 100);
+
+            return {
+                nodes: {
+                    analyser,
+                    compressor,
+                    gainNode,
+                    highPassFilter
+                },
+                cleanup: () => {
+                    clearInterval(processInterval);
+                    source.disconnect();
+                    highPassFilter.disconnect();
+                    compressor.disconnect();
+                    gainNode.disconnect();
+                    analyser.disconnect();
+                }
+            };
+        };
+
+        const setupSpeechRecognition = async (onStart, onResult, onError, onEnd) => {
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                throw new Error('Speech recognition not supported in this browser.');
+            }
+
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const recognition = new SpeechRecognition();
+            let audioStream = null;
+            let audioContext = null;
+            let source = null;
+            let audioProcessor = null;
+
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+            recognition.maxAlternatives = 3;
+
+            // Optimize recognition settings
+            if ('speechRecognitionList' in window) {
+                const grammarList = new window.SpeechGrammarList();
+                recognition.grammars = grammarList;
+            }
+
+            const cleanup = () => {
+                if (audioProcessor) {
+                    audioProcessor.cleanup();
+                }
+                if (audioStream) {
+                    audioStream.getTracks().forEach(track => track.stop());
+                }
+                if (audioContext) {
+                    audioContext.close();
+                }
+                recognition.stop();
+            };
+
+            try {
+                audioStream = await setupSystemAudioCapture();
+                audioContext = new AudioContext({
+                    latencyHint: 'interactive',
+                    sampleRate: AUDIO_CONFIG.sampleRate
+                });
+                source = audioContext.createMediaStreamSource(audioStream);
+
+                // Create and connect audio processor
+                audioProcessor = await createAudioProcessor(audioContext, source);
+
+                recognition.onstart = () => {
+                    console.log('Recognition started');
+                    onStart();
+                };
+
+                recognition.onresult = (event) => {
+                    const results = Array.from(event.results);
+                    let finalTranscript = '';
+                    let interimTranscript = '';
+
+                    for (let i = event.resultIndex; i < results.length; ++i) {
+                        // Get the most confident result
+                        let bestAlternative = results[i][0];
+                        for (let j = 1; j < results[i].length; j++) {
+                            if (results[i][j].confidence > bestAlternative.confidence) {
+                                bestAlternative = results[i][j];
+                            }
+                        }
+
+                        const transcript = bestAlternative.transcript;
+                        if (results[i].isFinal) {
+                            finalTranscript += transcript + ' ';
+                        } else {
+                            interimTranscript += transcript;
+                        }
+                    }
+
+                    onResult(finalTranscript || interimTranscript);
+                };
+
+                recognition.onerror = (event) => {
+                    if (event.error !== 'no-speech') {
+                        console.error('Recognition error:', event.error);
+                        onError(`Recognition error: ${event.error}`);
+                    }
+                };
+
+                recognition.onend = () => {
+                    // Automatically restart recognition if it ends
+                    try {
+                        recognition.start();
+                        console.log('Recognition restarted');
+                    } catch (e) {
+                        console.log('Recognition ended');
+                        onEnd();
+                    }
+                };
+
+                recognition.start();
+                return { cleanup };
+            } catch (error) {
+                cleanup();
+                throw error;
+            }
+        };
 
         let cleanup = null;
         const startButton = document.getElementById('startButton');
@@ -109,9 +343,10 @@
 
         async function startCapture() {
             try {
+                updateStatus('Requesting system audio access...');
                 const result = await setupSpeechRecognition(
                     () => {
-                        updateStatus('Recognition started');
+                        updateStatus('Recognition started - Capturing system audio');
                         startButton.disabled = true;
                         stopButton.disabled = false;
                     },
@@ -131,7 +366,8 @@
 
                 cleanup = result.cleanup;
             } catch (error) {
-                showError(error.message);
+                showError(`Error: ${error.message}`);
+                updateStatus('Failed to start capture');
             }
         }
 
@@ -154,5 +390,3 @@
             iframe.src = sourceSelect.value;
         };
     </script>
-</body>
-</html>
