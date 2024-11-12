@@ -1,0 +1,187 @@
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+// Mock phrases for simulation mode
+export const mockPhrases = [
+  "Tell me about your experience with React and web development.",
+  "How do you handle state management in complex applications?",
+  "Can you describe a challenging project you worked on?",
+  "What's your approach to debugging and testing?",
+  "How do you stay updated with new technologies?"
+];
+
+// AI Configuration
+const API_KEY = 'AIzaSyDfbugjoSRGIb40hn4JoxT8kLL39tIzCzM';
+const genAI = new GoogleGenerativeAI(API_KEY);
+const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+
+interface RecognitionResult {
+  recognition: any;
+  cleanup: () => void;
+}
+
+export const generateAIResponse = async (text: string): Promise<string> => {
+  try {
+    const result = await model.generateContent(text);
+    const response = result.response;
+    return response.text();
+  } catch (error) {
+    console.error('Error generating AI response:', error);
+    return 'Error generating response. Please try again.';
+  }
+};
+
+export const checkSystemAudioAvailability = async (): Promise<boolean> => {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.some(device =>
+      device.kind === 'audioinput' &&
+      (device.label.toLowerCase().includes('system') ||
+       device.label.toLowerCase().includes('virtual') ||
+       device.label.toLowerCase().includes('output'))
+    );
+  } catch (error) {
+    console.error('Error checking system audio:', error);
+    return false;
+  }
+};
+
+export const setupSpeechRecognition = (
+  onStart: () => void,
+  onResult: (transcript: string) => void,
+  onError: (error: string) => void,
+  onEnd: () => void
+): RecognitionResult | null => {
+  if (!('webkitSpeechRecognition' in window)) {
+    onError('Speech recognition not supported in this browser.');
+    return null;
+  }
+
+  const SpeechRecognition = (window as any).webkitSpeechRecognition;
+  const recognition = new SpeechRecognition();
+
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = 'en-US';
+
+  let isProcessing = false;
+  let audioContext: AudioContext | null = null;
+  let source: MediaStreamAudioSourceNode | null = null;
+  let processor: ScriptProcessorNode | null = null;
+  let silenceTimeout: NodeJS.Timeout | null = null;
+
+  const cleanup = () => {
+    if (silenceTimeout) {
+      clearTimeout(silenceTimeout);
+    }
+    if (processor) {
+      processor.disconnect();
+    }
+    if (source) {
+      source.disconnect();
+    }
+    if (audioContext && audioContext.state !== 'closed') {
+      audioContext.close();
+    }
+  };
+
+  const startSystemAudioCapture = async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const systemAudioDevice = devices.find(device =>
+        device.kind === 'audioinput' &&
+        (device.label.toLowerCase().includes('system') ||
+         device.label.toLowerCase().includes('virtual') ||
+         device.label.toLowerCase().includes('output'))
+      );
+
+      if (!systemAudioDevice) {
+        throw new Error('No system audio device found');
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: { exact: systemAudioDevice.deviceId },
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        }
+      });
+
+      audioContext = new AudioContext();
+      source = audioContext.createMediaStreamSource(stream);
+      processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+      source.connect(processor);
+      processor.connect(audioContext.destination);
+
+      let audioDetected = false;
+
+      processor.onaudioprocess = (e: AudioProcessingEvent) => {
+        const inputData = e.inputBuffer.getChannelData(0);
+        const sum = inputData.reduce((acc, val) => acc + Math.abs(val), 0);
+        const average = sum / inputData.length;
+
+        if (average > 0.01) {
+          audioDetected = true;
+          if (!isProcessing) {
+            isProcessing = true;
+            recognition.start();
+          }
+          if (silenceTimeout) {
+            clearTimeout(silenceTimeout);
+            silenceTimeout = null;
+          }
+        } else if (audioDetected && !silenceTimeout) {
+          silenceTimeout = setTimeout(() => {
+            if (isProcessing) {
+              recognition.stop();
+            }
+          }, 1500);
+        }
+      };
+    } catch (error) {
+      console.error('Error accessing system audio:', error);
+      onError('Failed to access system audio. Please check your system audio settings.');
+      cleanup();
+    }
+  };
+
+  startSystemAudioCapture();
+
+  recognition.onstart = onStart;
+
+  recognition.onresult = (event: any) => {
+    const transcript = Array.from(event.results)
+      .map((result: any) => result[0])
+      .map((result: any) => result.transcript)
+      .join(' ');
+    onResult(transcript);
+  };
+
+  recognition.onerror = (event: any) => {
+    let errorMessage = 'An error occurred. ';
+    switch(event.error) {
+      case 'network':
+        errorMessage += 'Network error. Please check your internet connection.';
+        break;
+      case 'not-allowed':
+        errorMessage += 'System audio access denied. Please check your system audio settings.';
+        break;
+      case 'no-speech':
+        return; // Don't show error for no speech
+      default:
+        errorMessage += `Error: ${event.error}. Please try again.`;
+    }
+    onError(errorMessage);
+  };
+
+  recognition.onend = () => {
+    isProcessing = false;
+    onEnd();
+  };
+
+  return {
+    recognition,
+    cleanup
+  };
+};
