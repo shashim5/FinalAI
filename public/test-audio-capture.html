@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>System Audio Capture Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .card {
+            border: 1px solid #ccc;
+            padding: 20px;
+            border-radius: 8px;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .button:disabled {
+            background: #ccc;
+        }
+        .transcript {
+            white-space: pre-wrap;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            min-height: 100px;
+        }
+        .status {
+            color: #666;
+            font-style: italic;
+        }
+        .error {
+            color: #dc3545;
+        }
+        #audioSources {
+            width: 100%;
+            height: 300px;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h2>System Audio Capture Test</h2>
+            <p>This page tests the system audio capture functionality. Follow these steps:</p>
+            <ol>
+                <li>Play some audio from any source (YouTube, Zoom, etc.)</li>
+                <li>Click "Start Capture" to begin capturing system audio</li>
+                <li>Speak or play audio to test the transcription</li>
+            </ol>
+            <button id="startButton" class="button">Start Capture</button>
+            <button id="stopButton" class="button" disabled>Stop Capture</button>
+            <p id="status" class="status">Ready to start</p>
+            <div id="error" class="error"></div>
+        </div>
+
+        <div class="card">
+            <h3>Live Transcript</h3>
+            <div id="transcript" class="transcript"></div>
+        </div>
+
+        <div class="card">
+            <h3>Test Audio Sources</h3>
+            <select id="sourceSelect" onchange="loadSource()">
+                <option value="">Select a test source...</option>
+                <option value="https://www.youtube.com/embed/dQw4w9WgXcQ">YouTube Video</option>
+                <option value="https://www.youtube.com/embed/18uDutylDa4">Technical Interview</option>
+            </select>
+            <iframe id="audioSources" allow="autoplay"></iframe>
+        </div>
+    </div>
+
+    <script type="module">
+        import { setupSystemAudioCapture, setupSpeechRecognition } from '../src/services/aiService.ts';
+
+        let cleanup = null;
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const statusElement = document.getElementById('status');
+        const errorElement = document.getElementById('error');
+        const transcriptElement = document.getElementById('transcript');
+
+        function updateStatus(message) {
+            statusElement.textContent = message;
+        }
+
+        function showError(message) {
+            errorElement.textContent = message;
+        }
+
+        function updateTranscript(text) {
+            transcriptElement.textContent = text;
+        }
+
+        async function startCapture() {
+            try {
+                const result = await setupSpeechRecognition(
+                    () => {
+                        updateStatus('Recognition started');
+                        startButton.disabled = true;
+                        stopButton.disabled = false;
+                    },
+                    (transcript) => {
+                        updateTranscript(transcript);
+                    },
+                    (error) => {
+                        showError(error);
+                        stopCapture();
+                    },
+                    () => {
+                        updateStatus('Recognition ended');
+                        startButton.disabled = false;
+                        stopButton.disabled = true;
+                    }
+                );
+
+                cleanup = result.cleanup;
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        function stopCapture() {
+            if (cleanup) {
+                cleanup();
+                cleanup = null;
+            }
+            startButton.disabled = false;
+            stopButton.disabled = true;
+            updateStatus('Stopped');
+        }
+
+        startButton.onclick = startCapture;
+        stopButton.onclick = stopCapture;
+
+        window.loadSource = function() {
+            const sourceSelect = document.getElementById('sourceSelect');
+            const iframe = document.getElementById('audioSources');
+            iframe.src = sourceSelect.value;
+        };
+    </script>
+</body>
+</html>
