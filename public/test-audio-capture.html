@@ -176,23 +176,51 @@ html
             const dataArray = new Float32Array(bufferLength);
             let lastVoiceDetection = Date.now();
             const VOICE_TIMEOUT = 1000;
+            let energyHistory = [];  // Move history outside of function
 
             const detectVoice = () => {
                 analyser.getFloatFrequencyData(dataArray);
 
-                // Calculate average volume in speech frequency range (300Hz - 3400Hz)
-                const startBin = Math.floor(300 / (AUDIO_CONFIG.sampleRate / AUDIO_CONFIG.fftSize));
-                const endBin = Math.floor(3400 / (AUDIO_CONFIG.sampleRate / AUDIO_CONFIG.fftSize));
-                let sum = 0;
-                let count = 0;
+                // Calculate energy in different frequency bands
+                const bands = [
+                    { start: 300, end: 1000 },   // Low speech frequencies
+                    { start: 1000, end: 2000 },  // Mid speech frequencies
+                    { start: 2000, end: 3400 }   // High speech frequencies
+                ];
 
-                for (let i = startBin; i < endBin; i++) {
-                    sum += dataArray[i];
-                    count++;
-                }
+                const bandEnergies = bands.map(band => {
+                    const startBin = Math.floor(band.start / (AUDIO_CONFIG.sampleRate / AUDIO_CONFIG.fftSize));
+                    const endBin = Math.floor(band.end / (AUDIO_CONFIG.sampleRate / AUDIO_CONFIG.fftSize));
+                    let sum = 0;
+                    let count = 0;
 
-                const averageVolume = sum / count;
-                return averageVolume > AUDIO_CONFIG.voiceThreshold;
+                    for (let i = startBin; i < endBin; i++) {
+                        // Convert from dB to linear scale and apply additional noise filtering
+                        if (dataArray[i] > AUDIO_CONFIG.noiseThreshold) {
+                            const magnitude = Math.pow(10, dataArray[i] / 20);
+                            sum += magnitude * magnitude;
+                            count++;
+                        }
+                    }
+
+                    return count > 0 ? sum / count : 0;
+                });
+
+                // Calculate weighted average of band energies with dynamic thresholding
+                const weights = [0.4, 0.4, 0.2]; // More weight on low and mid frequencies
+                const weightedEnergy = bandEnergies.reduce((acc, energy, i) => acc + energy * weights[i], 0);
+
+                // Update moving average for smoother detection
+                energyHistory.push(weightedEnergy);
+                if (energyHistory.length > 5) energyHistory.shift();
+
+                const averageEnergy = energyHistory.reduce((a, b) => a + b, 0) / energyHistory.length;
+
+                // Dynamic threshold based on recent energy levels
+                const dynamicThreshold = Math.pow(10, AUDIO_CONFIG.voiceThreshold / 20) *
+                    (1 + Math.log10(1 + averageEnergy));
+
+                return averageEnergy > dynamicThreshold;
             };
 
             const processInterval = setInterval(() => {
