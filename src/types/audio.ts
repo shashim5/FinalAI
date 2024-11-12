@@ -1,4 +1,4 @@
-// Audio types for the application
+// Basic audio types
 export interface AudioConfig {
   echoCancellation: boolean;
   noiseSuppression: boolean;
@@ -14,19 +14,7 @@ export interface AudioProcessor {
   stream: MediaStream;
 }
 
-export interface RecognitionResult {
-  recognition: any; // SpeechRecognition type is not available in TypeScript by default
-  cleanup: () => void;
-}
-
 export interface AudioMessage {
   type: 'buffer';
   buffer: Float32Array;
-}
-
-declare global {
-  interface Window {
-    webkitSpeechRecognition: any;
-    SpeechRecognition: any;
-  }
 }

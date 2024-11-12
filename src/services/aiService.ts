@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { AudioConfig, AudioProcessor, RecognitionResult, AudioMessage } from '../types/audio';
+import { SystemAudioConfig, SystemAudioProcessor, SystemRecognitionResult } from '../types/systemAudio';
+import { RecognitionResult } from '../types/recognition';
 
 // Mock phrases for simulation mode
 export const mockPhrases = [
@@ -15,8 +16,8 @@ const API_KEY = 'AIzaSyDfbugjoSRGIb40hn4JoxT8kLL39tIzCzM';
 const genAI = new GoogleGenerativeAI(API_KEY);
 const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
 
-// Default audio configuration for system audio capture
-const defaultAudioConfig: AudioConfig = {
+// Default system audio configuration
+const defaultSystemAudioConfig: SystemAudioConfig = {
   echoCancellation: false,
   noiseSuppression: false,
   autoGainControl: false,
@@ -47,11 +48,6 @@ export const checkSystemAudioAvailability = async (): Promise<boolean> => {
        device.label.toLowerCase().includes('mix') ||
        device.label.toLowerCase().includes('loopback'))
     );
-
-    if (!hasSystemAudio) {
-      console.warn('No system audio device found. Please check your system audio settings.');
-    }
-
     return hasSystemAudio;
   } catch (error) {
     console.error('Error checking system audio:', error);
@@ -59,13 +55,11 @@ export const checkSystemAudioAvailability = async (): Promise<boolean> => {
   }
 };
 
-const setupAudioProcessor = async (config: AudioConfig = defaultAudioConfig): Promise<AudioProcessor | null> => {
+const setupSystemAudioProcessor = async (config: SystemAudioConfig = defaultSystemAudioConfig): Promise<SystemAudioProcessor | null> => {
   try {
-    // Load audio worklet
     const context = new AudioContext({ sampleRate: config.sampleRate });
     await context.audioWorklet.addModule('/audioWorklet.js');
 
-    // Find suitable audio input device
     const devices = await navigator.mediaDevices.enumerateDevices();
     const audioDevice = devices.find(device =>
       device.kind === 'audioinput' &&
@@ -78,10 +72,9 @@ const setupAudioProcessor = async (config: AudioConfig = defaultAudioConfig): Pr
     );
 
     if (!audioDevice) {
-      throw new Error('No suitable audio device found. Please check your system audio settings.');
+      throw new Error('No suitable system audio device found');
     }
 
-    // Set up audio constraints
     const constraints: MediaTrackConstraints = {
       deviceId: { exact: audioDevice.deviceId },
       ...config,
@@ -90,19 +83,22 @@ const setupAudioProcessor = async (config: AudioConfig = defaultAudioConfig): Pr
       autoGainControl: { ideal: config.autoGainControl }
     };
 
-    // Get media stream
     const stream = await navigator.mediaDevices.getUserMedia({ audio: constraints });
     const source = context.createMediaStreamSource(stream);
-
-    // Create and connect worklet node
     const workletNode = new AudioWorkletNode(context, 'audio-processor');
+
     source.connect(workletNode);
     workletNode.connect(context.destination);
 
-    console.log('Successfully connected to audio device:', audioDevice.label);
-    return { context, source, workletNode, stream };
+    return {
+      context,
+      source,
+      workletNode,
+      stream,
+      isActive: true
+    };
   } catch (error) {
-    console.error('Error setting up audio processor:', error);
+    console.error('Error setting up system audio processor:', error);
     return null;
   }
 };
@@ -112,15 +108,14 @@ export const setupSpeechRecognition = (
   onResult: (transcript: string) => void,
   onError: (error: string) => void,
   onEnd: () => void
-): RecognitionResult => {
+): SystemRecognitionResult => {
   if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
     onError('Speech recognition not supported in this browser.');
     throw new Error('Speech recognition not supported');
   }
 
   const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-  let isProcessing = false;
-  let audioProcessor: AudioProcessor | null = null;
+  let audioProcessor: SystemAudioProcessor | null = null;
   let silenceTimeout: NodeJS.Timeout | null = null;
   let retryCount = 0;
   const MAX_RETRIES = 3;
@@ -141,8 +136,6 @@ export const setupSpeechRecognition = (
       audioProcessor.stream.getTracks().forEach(track => track.stop());
       audioProcessor = null;
     }
-    isProcessing = false;
-    retryCount = 0;
     try {
       recognition.stop();
     } catch (error) {
@@ -150,71 +143,59 @@ export const setupSpeechRecognition = (
     }
   };
 
-  const handleAudioProcess = () => {
-    let isActive = false;
-    let processingTimeout: NodeJS.Timeout | null = null;
-
-    return (audioProcessor: AudioProcessor) => {
-      audioProcessor.workletNode.port.onmessage = (event: MessageEvent<AudioMessage>) => {
-        if (event.data.type === 'buffer') {
-          const buffer = event.data.buffer;
-          const sum = Array.from(buffer).reduce((acc, val) => acc + Math.abs(val), 0);
-          const average = sum / buffer.length;
-
-          if (average > 0.01) {
-            if (!isActive) {
-              isActive = true;
-              try {
-                recognition.start();
-              } catch (error) {
-                console.error('Error starting recognition:', error);
-              }
-            }
-            if (processingTimeout) {
-              clearTimeout(processingTimeout);
-              processingTimeout = null;
-            }
-          } else if (isActive && !processingTimeout) {
-            processingTimeout = setTimeout(() => {
-              if (isActive) {
-                try {
-                  recognition.stop();
-                  isActive = false;
-                } catch (error) {
-                  console.error('Error stopping recognition:', error);
-                }
-              }
-            }, 1500);
-          }
-        }
-      };
-    };
-  };
-
-  const audioProcessHandler = handleAudioProcess();
-
   const initializeAudioCapture = async (): Promise<void> => {
     try {
       if (retryCount >= MAX_RETRIES) {
         throw new Error('Maximum retry attempts reached');
       }
 
-      audioProcessor = await setupAudioProcessor();
+      audioProcessor = await setupSystemAudioProcessor();
       if (!audioProcessor) {
-        throw new Error('Failed to initialize audio processor');
+        throw new Error('Failed to initialize system audio processor');
       }
 
-      audioProcessHandler(audioProcessor);
+      audioProcessor.workletNode.port.onmessage = (event: MessageEvent) => {
+        const data = event.data;
+        if (data.type === 'buffer') {
+          const buffer = data.buffer;
+          const sum = Array.from(buffer).reduce((acc, val) => acc + Math.abs(val), 0);
+          const average = sum / buffer.length;
+
+          if (average > 0.01) {
+            if (!recognition.continuous) {
+              recognition.continuous = true;
+              try {
+                recognition.start();
+              } catch (error) {
+                console.error('Error starting recognition:', error);
+              }
+            }
+            if (silenceTimeout) {
+              clearTimeout(silenceTimeout);
+              silenceTimeout = null;
+            }
+          } else if (recognition.continuous && !silenceTimeout) {
+            silenceTimeout = setTimeout(() => {
+              recognition.continuous = false;
+              try {
+                recognition.stop();
+              } catch (error) {
+                console.error('Error stopping recognition:', error);
+              }
+            }, 1500);
+          }
+        }
+      };
     } catch (error) {
       console.error('Error in audio capture:', error);
       cleanup();
       retryCount++;
 
       if (retryCount < MAX_RETRIES) {
-        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-        return initializeAudioCapture();
+        setTimeout(() => initializeAudioCapture(), 1000 * retryCount);
+      } else {
+        onError('Failed to initialize system audio capture after multiple attempts.');
       }
-      onError('Failed to initialize audio capture after multiple attempts.');
     }
   };
 
@@ -255,9 +236,8 @@ export const setupSpeechRecognition = (
 
   recognition.onend = () => {
     console.log('Speech recognition ended');
-    isProcessing = false;
     onEnd();
   };
 
-  return { recognition, cleanup };
+  return { recognition, cleanup, audioProcessor };
 };

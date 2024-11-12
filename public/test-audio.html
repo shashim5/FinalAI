@@ -1,138 +1,65 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Audio Test</title>
-    <style>
-        .transcription-box {
-            margin-top: 20px;
-            padding: 10px;
-            border: 1px solid #ccc;
-            min-height: 100px;
-            max-width: 600px;
-        }
-        .controls {
-            margin: 20px 0;
-        }
-        .status {
-            color: #666;
-            font-style: italic;
-        }
-    </style>
+    <title>System Audio Capture Test</title>
 </head>
 <body>
     <h1>System Audio Capture Test</h1>
-    <div class="controls">
-        <button id="startBtn">Start Listening</button>
-        <button id="stopBtn">Stop Listening</button>
-        <span class="status" id="status">Not listening</span>
-    </div>
-    <audio controls>
-        <source src="https://www2.cs.uic.edu/~i101/SoundFiles/gettysburg.wav" type="audio/wav">
-        Your browser does not support the audio element.
-    </audio>
-    <div class="transcription-box" id="transcription">
-        Transcription will appear here...
-    </div>
+    <button id="startBtn">Start Capturing</button>
+    <button id="stopBtn" disabled>Stop Capturing</button>
+    <div id="status">Status: Idle</div>
+    <div id="transcript">Transcript: </div>
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const startBtn = document.getElementById('startBtn');
-            const stopBtn = document.getElementById('stopBtn');
-            const status = document.getElementById('status');
-            const transcriptionDiv = document.getElementById('transcription');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const status = document.getElementById('status');
+        const transcript = document.getElementById('transcript');
 
-            async function setupAudioCapture() {
-                try {
-                    const devices = await navigator.mediaDevices.enumerateDevices();
-                    const virtualDevice = devices.find(device =>
-                        device.kind === 'audioinput' &&
-                        (device.label.toLowerCase().includes('virtual_mic') ||
-                         device.label.toLowerCase().includes('virtual mic') ||
-                         device.label.toLowerCase().includes('virtualmicrophone'))
-                    );
+        let recognition = null;
+        let cleanup = null;
 
-                    if (!virtualDevice) {
-                        throw new Error('Virtual microphone not found');
-                    }
-
-                    const stream = await navigator.mediaDevices.getUserMedia({
-                        audio: {
-                            deviceId: { exact: virtualDevice.deviceId },
-                            echoCancellation: false,
-                            noiseSuppression: false,
-                            autoGainControl: false
-                        }
-                    });
-
-                    return stream;
-                } catch (error) {
-                    console.error('Error setting up audio capture:', error);
-                    status.textContent = 'Error: ' + error.message;
-                    return null;
+        async function setupRecognition() {
+            const { setupSpeechRecognition } = await import('/src/services/aiService.js');
+            const result = setupSpeechRecognition(
+                () => {
+                    status.textContent = 'Status: Started';
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                },
+                (text) => {
+                    transcript.textContent = 'Transcript: ' + text;
+                },
+                (error) => {
+                    status.textContent = 'Status: Error - ' + error;
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                },
+                () => {
+                    status.textContent = 'Status: Ended';
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
                 }
+            );
+            recognition = result.recognition;
+            cleanup = result.cleanup;
+        }
+
+        startBtn.onclick = async () => {
+            if (!recognition) {
+                await setupRecognition();
             }
-
-            let recognition = null;
-
-            async function startListening() {
-                try {
-                    const stream = await setupAudioCapture();
-                    if (!stream) return;
-
-                    recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-                    recognition.continuous = true;
-                    recognition.interimResults = true;
-                    recognition.lang = 'en-US';
-
-                    recognition.onstart = () => {
-                        status.textContent = 'Listening...';
-                        startBtn.disabled = true;
-                        stopBtn.disabled = false;
-                    };
-
-                    recognition.onresult = (event) => {
-                        const transcript = Array.from(event.results)
-                            .map(result => result[0])
-                            .map(result => result.transcript)
-                            .join(' ');
-                        transcriptionDiv.textContent = transcript;
-                        console.log('Transcript:', transcript);
-                    };
-
-                    recognition.onerror = (event) => {
-                        console.error('Recognition error:', event.error);
-                        status.textContent = 'Error: ' + event.error;
-                    };
-
-                    recognition.onend = () => {
-                        status.textContent = 'Stopped listening';
-                        startBtn.disabled = false;
-                        stopBtn.disabled = true;
-                    };
-
-                    recognition.start();
-                } catch (error) {
-                    console.error('Error starting recognition:', error);
-                    status.textContent = 'Error: ' + error.message;
-                }
+            try {
+                recognition.start();
+            } catch (error) {
+                console.error('Error starting recognition:', error);
             }
+        };
 
-            function stopListening() {
-                if (recognition) {
-                    recognition.stop();
-                }
+        stopBtn.onclick = () => {
+            if (cleanup) {
+                cleanup();
             }
-
-            startBtn.addEventListener('click', startListening);
-            stopBtn.addEventListener('click', stopListening);
-            stopBtn.disabled = true;
-
-            // Log available audio devices for debugging
-            navigator.mediaDevices.enumerateDevices()
-                .then(devices => {
-                    console.log('Available audio devices:', devices.filter(d => d.kind === 'audioinput'));
-                })
-                .catch(error => console.error('Error listing devices:', error));
-        });
+        };
     </script>
 </body>
 </html>

@@ -3,7 +3,7 @@ import hljs from 'highlight.js';
 import 'highlight.js/styles/github-dark.css';
 import './styles.css';
 import { AISession } from './types';
-import { generateAIResponse, setupSpeechRecognition, checkMicrophoneAvailability } from './services/aiService';
+import { generateAIResponse, setupSpeechRecognition, checkSystemAudioAvailability } from './services/aiService';
 import Session from './components/Session';
 import History from './components/History';
 
@@ -49,7 +49,7 @@ const App: React.FC = () => {
     const newSession: AISession = {
       id: Math.random().toString(36).substr(2, 9),
       question: '',
-      response: '🎙️ Click "Start Listening" to begin recording your interview questions.',
+      response: '🔊 Click "Start Listening" to begin capturing system audio.',
       isListening: false,
       transcript: '',
       lastSimulationStep: 0
@@ -108,9 +108,9 @@ const App: React.FC = () => {
       stopListening(currentSessionId);
     }
 
-    const hasMicrophone = await checkMicrophoneAvailability();
-    if (!hasMicrophone) {
-      console.warn('No microphone detected, some features may be limited');
+    const hasSystemAudio = await checkSystemAudioAvailability();
+    if (!hasSystemAudio) {
+      console.warn('No system audio device detected. Please check your system audio settings.');
     }
     setCurrentSessionId(sessionId);
 
