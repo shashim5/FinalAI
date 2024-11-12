@@ -7,11 +7,17 @@ const genAI = new GoogleGenerativeAI(API_KEY);
 const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
 
 const defaultSystemAudioConfig: SystemAudioConfig = {
-  echoCancellation: false,
-  noiseSuppression: false,
-  autoGainControl: false,
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
   channelCount: 2,
-  sampleRate: 44100
+  sampleRate: 48000,
+  fftSize: 2048,
+  smoothingTimeConstant: 0.8,
+  minDecibels: -90,
+  maxDecibels: -10,
+  noiseThreshold: -50,
+  voiceThreshold: -40
 };
 
 export const generateAIResponse = async (text: string): Promise<string> => {
@@ -95,6 +101,7 @@ export const setupSpeechRecognition = async (
 
   recognition.continuous = true;
   recognition.interimResults = true;
+  recognition.maxAlternatives = 3;
   recognition.lang = 'en-US';
 
   const cleanup = () => {
@@ -123,19 +130,85 @@ export const setupSpeechRecognition = async (
       throw new Error('Failed to capture system audio');
     }
 
-    audioContext = new AudioContext();
+    audioContext = new AudioContext({
+      latencyHint: 'interactive',
+      sampleRate: defaultSystemAudioConfig.sampleRate
+    });
     source = audioContext.createMediaStreamSource(audioStream);
-    const processor = audioContext.createScriptProcessor(4096, 1, 1);
 
-    source.connect(processor);
-    processor.connect(audioContext.destination);
+    // Create audio processing nodes
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = defaultSystemAudioConfig.fftSize;
+    analyser.smoothingTimeConstant = defaultSystemAudioConfig.smoothingTimeConstant;
+    analyser.minDecibels = defaultSystemAudioConfig.minDecibels;
+    analyser.maxDecibels = defaultSystemAudioConfig.maxDecibels;
 
-    processor.onaudioprocess = (e: AudioProcessingEvent) => {
-      const inputData = e.inputBuffer.getChannelData(0);
-      const sum = Array.from(inputData).reduce((acc, val) => acc + Math.abs(val), 0);
-      const average = sum / inputData.length;
+    const compressor = audioContext.createDynamicsCompressor();
+    compressor.threshold.value = -50;
+    compressor.knee.value = 40;
+    compressor.ratio.value = 12;
+    compressor.attack.value = 0;
+    compressor.release.value = 0.25;
 
-      if (average > 0.01 && !recognition.continuous) {
+    const gainNode = audioContext.createGain();
+    gainNode.gain.value = 1.5;
+
+    const highPassFilter = audioContext.createBiquadFilter();
+    highPassFilter.type = 'highpass';
+    highPassFilter.frequency.value = 80;
+    highPassFilter.Q.value = 0.7;
+
+    // Connect audio processing chain
+    source.connect(highPassFilter);
+    highPassFilter.connect(compressor);
+    compressor.connect(gainNode);
+    gainNode.connect(analyser);
+    analyser.connect(audioContext.destination);
+
+    // Create buffer for frequency analysis
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Float32Array(bufferLength);
+    const energyHistory: number[] = [];
+
+    // Improved voice activity detection with multi-band analysis
+    const detectVoice = () => {
+      analyser.getFloatFrequencyData(dataArray);
+
+      // Calculate energy in different frequency bands
+      const bands = [
+        { start: 300, end: 1000 },   // Low speech frequencies
+        { start: 1000, end: 2000 },  // Mid speech frequencies
+        { start: 2000, end: 3400 }   // High speech frequencies
+      ];
+      const weights = [0.4, 0.4, 0.2]; // More weight on low and mid frequencies
+
+      const bandEnergies = bands.map(band => {
+        const startBin = Math.floor(band.start / (defaultSystemAudioConfig.sampleRate / defaultSystemAudioConfig.fftSize));
+        const endBin = Math.floor(band.end / (defaultSystemAudioConfig.sampleRate / defaultSystemAudioConfig.fftSize));
+        let sum = 0;
+        let count = 0;
+
+        for (let i = startBin; i < endBin; i++) {
+          if (dataArray[i] > defaultSystemAudioConfig.noiseThreshold) {
+            const magnitude = Math.pow(10, dataArray[i] / 20);
+            sum += magnitude * magnitude;
+            count++;
+          }
+        }
+
+        return count > 0 ? sum / count : 0;
+      });
+
+      const weightedEnergy = bandEnergies.reduce((acc, energy, i) => acc + energy * weights[i], 0);
+
+      energyHistory.push(weightedEnergy);
+      if (energyHistory.length > 5) energyHistory.shift();
+
+      const averageEnergy = energyHistory.reduce((a, b) => a + b, 0) / energyHistory.length;
+      const dynamicThreshold = Math.pow(10, defaultSystemAudioConfig.voiceThreshold / 20) *
+                              (1 + Math.log10(1 + averageEnergy));
+
+      if (averageEnergy > dynamicThreshold && !recognition.continuous) {
         recognition.continuous = true;
         try {
           recognition.start();
@@ -145,17 +218,37 @@ export const setupSpeechRecognition = async (
       }
     };
 
+    const processInterval = setInterval(detectVoice, 50);
+
     recognition.onstart = () => {
       console.log('Speech recognition started');
       onStart();
     };
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const transcript = Array.from(event.results)
-        .map(result => result[0].transcript)
-        .join(' ');
-      console.log('Transcript:', transcript);
-      onResult(transcript);
+      const results = Array.from(event.results);
+      let finalTranscript = '';
+      let interimTranscript = '';
+
+      for (let i = event.resultIndex; i < results.length; ++i) {
+        // Get the best alternative based on confidence
+        let bestAlternative = results[i][0];
+        for (let j = 1; j < results[i].length; j++) {
+          if (results[i][j].confidence > bestAlternative.confidence) {
+            bestAlternative = results[i][j];
+          }
+        }
+
+        const transcript = bestAlternative.transcript;
+        if (results[i].isFinal) {
+          finalTranscript += transcript + ' ';
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+
+      console.log('Transcript:', finalTranscript + interimTranscript);
+      onResult(finalTranscript + interimTranscript);
     };
 
     recognition.onerror = (event: SpeechRecognitionError) => {

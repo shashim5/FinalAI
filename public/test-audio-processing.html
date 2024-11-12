@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Audio Processing Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .status { margin: 20px 0; padding: 10px; border-radius: 4px; }
+        .active { background-color: #d4edda; color: #155724; }
+        .inactive { background-color: #f8d7da; color: #721c24; }
+        .metrics { margin: 20px 0; padding: 10px; background-color: #f8f9fa; }
+        .controls { margin: 20px 0; }
+        button { padding: 10px 20px; margin-right: 10px; }
+        #transcription {
+            margin: 20px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            min-height: 100px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Audio Processing Test</h1>
+        <div class="controls">
+            <button id="startBtn">Start Capture</button>
+            <button id="stopBtn" disabled>Stop Capture</button>
+        </div>
+        <div id="status" class="status inactive">Voice Activity: Inactive</div>
+        <div class="metrics">
+            <div>Energy Level: <span id="energy">N/A</span> dB</div>
+            <div>Noise Floor: <span id="noiseFloor">N/A</span> dB</div>
+            <div>Confidence: <span id="confidence">N/A</span></div>
+        </div>
+        <h2>Transcription:</h2>
+        <div id="transcription"></div>
+    </div>
+
+    <script>
+        let audioContext;
+        let audioWorklet;
+        let mediaStream;
+        const recognition = new webkitSpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+
+        recognition.onresult = (event) => {
+            const transcription = document.getElementById('transcription');
+            let interimTranscript = '';
+            let finalTranscript = '';
+
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript;
+                } else {
+                    interimTranscript += event.results[i][0].transcript;
+                }
+            }
+
+            transcription.innerHTML = finalTranscript + '<i style="color: #666;">' + interimTranscript + '</i>';
+        };
+
+        async function startCapture() {
+            try {
+                mediaStream = await navigator.mediaDevices.getDisplayMedia({
+                    audio: true,
+                    video: false
+                });
+
+                audioContext = new AudioContext();
+                await audioContext.audioWorklet.addModule('audioWorklet.js');
+
+                const source = audioContext.createMediaStreamSource(mediaStream);
+                audioWorklet = new AudioWorkletNode(audioContext, 'audio-processor');
+
+                audioWorklet.port.onmessage = (event) => {
+                    if (event.data.type === 'buffer') {
+                        updateMetrics(event.data);
+                    }
+                };
+
+                source.connect(audioWorklet);
+                audioWorklet.connect(audioContext.destination);
+
+                document.getElementById('startBtn').disabled = true;
+                document.getElementById('stopBtn').disabled = false;
+                recognition.start();
+            } catch (error) {
+                console.error('Error starting capture:', error);
+            }
+        }
+
+        function stopCapture() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+            }
+            if (audioContext) {
+                audioContext.close();
+            }
+            recognition.stop();
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+        }
+
+        function updateMetrics(data) {
+            const status = document.getElementById('status');
+            status.className = 'status ' + (data.isVoiceActive ? 'active' : 'inactive');
+            status.textContent = 'Voice Activity: ' + (data.isVoiceActive ? 'Active' : 'Inactive');
+
+            document.getElementById('energy').textContent = data.energy.toFixed(1);
+            document.getElementById('noiseFloor').textContent = data.noiseFloor.toFixed(1);
+            document.getElementById('confidence').textContent = data.confidence.toFixed(2);
+        }
+
+        document.getElementById('startBtn').onclick = startCapture;
+        document.getElementById('stopBtn').onclick = stopCapture;
+    </script>
+</body>
+</html>
