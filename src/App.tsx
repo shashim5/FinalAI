@@ -10,7 +10,6 @@ interface AISession {
   response: string;
   isListening: boolean;
   transcript: string;
-  lastSimulationStep: number;
 }
 
 const API_KEY = 'AIzaSyDfbugjoSRGIb40hn4JoxT8kLL39tIzCzM';
@@ -48,15 +47,15 @@ const styles = {
     overflowX: 'auto',
     display: 'flex',
     gap: '30px',
-    padding: '20px 40px',  // Increased horizontal padding for better visibility
+    padding: '20px 40px',
     scrollSnapType: 'x mandatory',
     scrollBehavior: 'smooth',
-    position: 'relative',  // Added for proper scroll container positioning
+    position: 'relative',
     '&::-webkit-scrollbar': {
       display: 'none',
     },
-    msOverflowStyle: 'none',  // Hide scrollbar in IE/Edge
-    scrollbarWidth: 'none',   // Hide scrollbar in Firefox
+    msOverflowStyle: 'none',
+    scrollbarWidth: 'none',
   },
   aiCard: {
     minWidth: '350px',
@@ -148,17 +147,13 @@ const App: React.FC = () => {
   });
   const [activeTab, setActiveTab] = useState<'current' | 'history'>('current');
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const [isRecording, setIsRecording] = useState<boolean>(false);
 
   const audioBridgeRef = useRef<AudioBridge | null>(null);
   const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const simulationIntervalRef = useRef<number | null>(null);
 
-  // Initialize AudioBridge
   useEffect(() => {
     audioBridgeRef.current = new AudioBridge();
 
-    // Set up transcript handling
     audioBridgeRef.current.onTranscript((transcript, isFinal) => {
       if (currentSessionId) {
         setAiSessions(prev => prev.map(session =>
@@ -181,10 +176,8 @@ const App: React.FC = () => {
       }
     });
 
-    // Set up error handling
     audioBridgeRef.current.onError((error) => {
       console.error('Audio capture error:', error);
-      setIsRecording(false);
       setAiSessions(prev => prev.map(session =>
         session.id === currentSessionId
           ? { ...session, isListening: false }
@@ -201,131 +194,6 @@ const App: React.FC = () => {
     };
   }, [currentSessionId]);
 
-  useEffect(() => {
-    console.log('Sessions updated:', aiSessions);
-  }, [aiSessions]);
-
-  const simulateRecording = (sessionId: string) => {
-    let simulationStep = 0;
-    const mockPhrases = [
-      "Tell me about your experience with React and web development.",
-      "How do you handle state management in complex applications?",
-      "Can you describe a challenging project you worked on?",
-      "What's your approach to debugging and testing?",
-      "How do you stay updated with new technologies?"
-    ];
-
-    console.log('Starting simulation for session:', sessionId);
-
-    // Initialize or resume session with proper content
-    setAiSessions(prev => {
-      const currentSession = prev.find(s => s.id === sessionId);
-      const updatedSessions = prev.map(session =>
-        session.id === sessionId ? {
-          ...session,
-          isListening: true,
-          response: '🎤 Recording started - Simulating interview questions...',
-          transcript: currentSession?.transcript || '', // Preserve existing transcript
-          question: currentSession?.question || '', // Preserve existing question
-          lastSimulationStep: currentSession?.lastSimulationStep || 0 // Track simulation progress
-        } : session
-      );
-      console.log('Session initialized/resumed:', updatedSessions);
-      localStorage.setItem('aiSessions', JSON.stringify(updatedSessions)); // Persist state
-      return updatedSessions;
-    });
-
-    // Clear any existing interval before starting new one
-    if (simulationIntervalRef.current !== null) {
-      console.log('Clearing existing simulation interval');
-      window.clearInterval(simulationIntervalRef.current);
-      simulationIntervalRef.current = null;
-    }
-
-    // Simulate periodic transcript updates with visual feedback
-    simulationIntervalRef.current = window.setInterval(async () => {
-      try {
-        const currentSession = aiSessions.find(s => s.id === sessionId);
-        console.log('Current session state:', currentSession);
-
-        if (!currentSession?.isListening) {
-          console.log('Session paused, clearing interval');
-          if (simulationIntervalRef.current !== null) {
-            window.clearInterval(simulationIntervalRef.current);
-            simulationIntervalRef.current = null;
-          }
-          setAiSessions(prev => {
-            const updatedSessions = prev.map(s =>
-              s.id === sessionId ? {
-                ...s,
-                response: '⏸️ Session paused - Click Start Listening to continue the interview'
-              } : s
-            );
-            localStorage.setItem('aiSessions', JSON.stringify(updatedSessions));
-            return updatedSessions;
-          });
-          return;
-        }
-
-        // Resume from last simulation step with proper state tracking
-        simulationStep = currentSession.lastSimulationStep || 0;
-        const mockTranscript = mockPhrases[simulationStep % mockPhrases.length];
-        console.log('Generated mock transcript:', mockTranscript);
-
-        // Update UI to show processing state
-        setAiSessions(prev => prev.map(s =>
-          s.id === sessionId ? {
-            ...s,
-            response: '💭 Processing interview response...'
-          } : s
-        ));
-
-        // Preserve existing conversation and append new content
-        const fullTranscript = currentSession.transcript
-          ? `${currentSession.transcript}\n${mockTranscript}`
-          : mockTranscript;
-
-        // Generate AI response while maintaining context
-        const response = await generateAIResponse(
-          currentSession.question
-            ? `${currentSession.question} ${mockTranscript}`
-            : mockTranscript
-        );
-        console.log('Generated AI response:', response);
-
-        setAiSessions(prev => {
-          const updatedSessions = prev.map(session =>
-            session.id === sessionId ? {
-              ...session,
-              transcript: fullTranscript,
-              question: currentSession.question || mockTranscript,
-              response: response || '🤔 Thinking...',
-              lastSimulationStep: (simulationStep + 1) % mockPhrases.length // Update progress
-            } : session
-          );
-          localStorage.setItem('aiSessions', JSON.stringify(updatedSessions));
-          console.log('Updated sessions:', updatedSessions);
-          return updatedSessions;
-        });
-
-        simulationStep = (simulationStep + 1) % mockPhrases.length;
-      } catch (error) {
-        console.error('Simulation error:', error);
-        if (simulationIntervalRef.current !== null) {
-          window.clearInterval(simulationIntervalRef.current);
-          simulationIntervalRef.current = null;
-        }
-        setAiSessions(prev => prev.map(session =>
-          session.id === sessionId ? {
-            ...session,
-            isListening: false,
-            response: '❌ Simulation error occurred - Please try again'
-          } : session
-        ));
-      }
-    }, 2000); // Shorter interval for more responsive testing
-  };
-
   const generateAIResponse = async (text: string): Promise<string> => {
     try {
       const result = await model.generateContent(text);
@@ -338,7 +206,6 @@ const App: React.FC = () => {
   };
 
   const startListening = useCallback((sessionId: string) => {
-    // Update UI state
     setAiSessions(prev => prev.map(session =>
       session.id === sessionId ? {
         ...session,
@@ -346,12 +213,10 @@ const App: React.FC = () => {
         response: '🎤 Starting audio capture...'
       } : session
     ));
-    setIsRecording(true);
     setCurrentSessionId(sessionId);
 
-    // Request system audio capture using getDisplayMedia
     navigator.mediaDevices.getDisplayMedia({
-      video: true,  // Required for screen sharing
+      video: true,
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
@@ -369,7 +234,6 @@ const App: React.FC = () => {
         ));
       } catch (error) {
         console.error('Failed to connect audio stream:', error);
-        setIsRecording(false);
         setAiSessions(prev => prev.map(session =>
           session.id === sessionId ? {
             ...session,
@@ -381,7 +245,6 @@ const App: React.FC = () => {
     })
     .catch((error) => {
       console.error('Failed to capture system audio:', error);
-      setIsRecording(false);
       setAiSessions(prev => prev.map(session =>
         session.id === sessionId ? {
           ...session,
@@ -390,22 +253,10 @@ const App: React.FC = () => {
         } : session
       ));
     });
-
-    // Cleanup function
-    return () => {
-      audioBridgeRef.current?.stop();
-    };
-  }, [setIsRecording, setAiSessions, setCurrentSessionId]);
+  }, [setAiSessions, setCurrentSessionId]);
 
   const stopListening = useCallback((sessionId: string) => {
-    // Clear simulation interval if active
-    if (simulationIntervalRef.current) {
-      clearInterval(simulationIntervalRef.current);
-      simulationIntervalRef.current = null;
-    }
-    // Stop real recording if active
     audioBridgeRef.current?.stop();
-    // Update UI state while preserving session data
     setAiSessions(prev => prev.map(session =>
       session.id === sessionId ? {
         ...session,
@@ -413,35 +264,18 @@ const App: React.FC = () => {
         response: session.response === '🎤 Recording...' ?
           '⏸️ Session paused - Click Start Listening to resume' :
           session.response,
-        transcript: session.transcript || ''  // Preserve existing transcript
+        transcript: session.transcript || ''
       } : session
     ));
-    // Persist updated state to localStorage
     localStorage.setItem('aiSessions', JSON.stringify(aiSessions));
   }, [aiSessions]);
 
   const toggleListening = useCallback((sessionId: string) => {
     const session = aiSessions.find(s => s.id === sessionId);
     if (session?.isListening) {
-      // Stop listening but preserve session state
-      setIsRecording(false);
       setCurrentSessionId(null);
       stopListening(sessionId);
-      // Update session state to indicate paused but not ended
-      setAiSessions(prev => {
-        const updatedSessions = prev.map(s =>
-          s.id === sessionId ? {
-            ...s,
-            isListening: false,
-            response: '⏸️ Session paused - Click Start Listening to resume'
-          } : s
-        );
-        localStorage.setItem('aiSessions', JSON.stringify(updatedSessions));
-        return updatedSessions;
-      });
     } else {
-      // Resume or start new recording
-      setIsRecording(true);
       setCurrentSessionId(sessionId);
       startListening(sessionId);
     }
@@ -468,32 +302,21 @@ const App: React.FC = () => {
       const session = prev.find(s => s.id === sessionId);
       if (!session) return prev;
 
-      // Stop any ongoing recording/simulation
-      if (simulationIntervalRef.current) {
-        window.clearInterval(simulationIntervalRef.current);
-        simulationIntervalRef.current = null;
-      }
-
-      // Stop any ongoing speech recognition
       audioBridgeRef.current?.stop();
 
-      // Move session to history with completion message
       const updatedSession = {
         ...session,
         isListening: false,
         response: '✅ Session completed and saved to history'
       };
 
-      // Update history in localStorage
       const updatedHistory = [...historySessions, updatedSession];
       localStorage.setItem('historySessions', JSON.stringify(updatedHistory));
       setHistorySessions(updatedHistory);
 
-      // Remove from current sessions and update localStorage
       const updatedSessions = prev.filter(s => s.id !== sessionId);
       localStorage.setItem('aiSessions', JSON.stringify(updatedSessions));
 
-      // Reset current session ID
       setCurrentSessionId(null);
 
       return updatedSessions;
@@ -519,14 +342,12 @@ const App: React.FC = () => {
       const container = document.querySelector('[data-scroll-container]');
       const cards = document.querySelectorAll('[data-card]');
 
-      // Handle vertical scroll transformations
       cards.forEach((card) => {
         const rect = card.getBoundingClientRect();
         const scrolled = rect.top < 0;
         card.classList.toggle('scrolled', scrolled);
       });
 
-      // Handle horizontal scroll transformations
       if (container) {
         cards.forEach((card) => {
           const rect = card.getBoundingClientRect();
@@ -551,23 +372,19 @@ const App: React.FC = () => {
   }, []);
 
   const addNewSession = async () => {
-    console.log('Adding new session...');
     const newSession: AISession = {
       id: Math.random().toString(36).substr(2, 9),
       question: '',
       response: '🎙️ Click "Start Listening" to begin recording your interview questions.',
       isListening: false,
       transcript: '',
-      lastSimulationStep: 0
     };
-    console.log('New session created:', newSession);
     setAiSessions(prev => {
       const updatedSessions = [...prev, newSession];
-      console.log('Updated sessions:', updatedSessions);
       localStorage.setItem('aiSessions', JSON.stringify(updatedSessions));
       return updatedSessions;
     });
-    setActiveTab('current'); // Ensure we're on the current tab
+    setActiveTab('current');
   };
 
   const formatCodeBlock = (text: string): React.ReactNode => {
