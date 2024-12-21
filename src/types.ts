@@ -49,6 +49,22 @@ export interface SpeechRecognitionInstance {
   abort: () => void;
 }
 
+// Media Stream types
+export interface MediaTrackConstraints {
+  echoCancellation?: boolean;
+  noiseSuppression?: boolean;
+  sampleRate?: number;
+}
+
+export interface MediaStreamConstraints {
+  video?: boolean | MediaTrackConstraints;
+  audio?: boolean | MediaTrackConstraints;
+}
+
+export interface BlobEvent extends Event {
+  data: Blob;
+}
+
 // Extend Window interface
 declare global {
   interface Window {
