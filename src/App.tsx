@@ -149,8 +149,8 @@ const App: React.FC = () => {
     })) : [];
   });
   const [activeTab, setActiveTab] = useState<'current' | 'history'>('current');
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [inputType, setInputType] = useState<'microphone' | 'system'>('microphone');
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const audioBridgeRef = useRef<AudioBridge | null>(null);
