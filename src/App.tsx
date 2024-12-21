@@ -47,12 +47,15 @@ const styles = {
     overflowX: 'auto',
     display: 'flex',
     gap: '30px',
-    padding: '20px 0',
+    padding: '20px 40px',  // Increased horizontal padding for better visibility
     scrollSnapType: 'x mandatory',
     scrollBehavior: 'smooth',
+    position: 'relative',  // Added for proper scroll container positioning
     '&::-webkit-scrollbar': {
       display: 'none',
     },
+    msOverflowStyle: 'none',  // Hide scrollbar in IE/Edge
+    scrollbarWidth: 'none',   // Hide scrollbar in Firefox
   },
   aiCard: {
     minWidth: '350px',
@@ -593,27 +596,39 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const handleScroll = () => {
+      const container = document.querySelector('[data-scroll-container]');
       const cards = document.querySelectorAll('[data-card]');
+
+      // Handle vertical scroll transformations
       cards.forEach((card) => {
         const rect = card.getBoundingClientRect();
         const scrolled = rect.top < 0;
         card.classList.toggle('scrolled', scrolled);
       });
+
+      // Handle horizontal scroll transformations
+      if (container) {
+        cards.forEach((card) => {
+          const rect = card.getBoundingClientRect();
+          const centerOffset = (window.innerWidth - rect.width) / 2;
+          const distanceFromCenter = Math.abs(rect.left - centerOffset);
+          const scale = Math.max(0.85, 1 - (distanceFromCenter / window.innerWidth) * 0.3);
+          const opacity = Math.max(0.6, 1 - (distanceFromCenter / window.innerWidth) * 0.5);
+          (card as HTMLElement).style.transform = `scale(${scale})`;
+          (card as HTMLElement).style.opacity = opacity.toString();
+        });
+      }
     };
 
     window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+    const container = document.querySelector('[data-scroll-container]');
+    container?.addEventListener('scroll', handleScroll);
 
-  useEffect(() => {
-    console.log('State updated - activeTab:', activeTab);
-    console.log('State updated - aiSessions:', aiSessions);
     return () => {
-      if (recognitionRef.current) {
-        stopListening(aiSessions[0]?.id);
-      }
+      window.removeEventListener('scroll', handleScroll);
+      container?.removeEventListener('scroll', handleScroll);
     };
-  }, [stopListening, aiSessions, activeTab]);
+  }, []);
 
   const addNewSession = async () => {
     console.log('Adding new session...');
@@ -704,7 +719,7 @@ const App: React.FC = () => {
         </button>
       </div>
 
-      <div style={styles.horizontalScroll}>
+      <div style={styles.horizontalScroll} data-scroll-container>
         {(activeTab === 'current' ? aiSessions : historySessions).map((session, index) => (
           <div key={session.id} style={styles.aiCard} data-card>
             <div style={{ marginBottom: '20px' }}>
