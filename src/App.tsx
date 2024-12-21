@@ -137,7 +137,6 @@ const App: React.FC = () => {
   });
   const [activeTab, setActiveTab] = useState<'current' | 'history'>('current');
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const [activeSessionIndex, setActiveSessionIndex] = useState<number | null>(null);
   const [isRecording, setIsRecording] = useState<boolean>(false);
 
   const recognitionRef = useRef<any>(null);
@@ -518,9 +517,17 @@ const App: React.FC = () => {
 
   const deleteSession = (index: number, isHistory: boolean = false) => {
     if (isHistory) {
-      setHistorySessions(prev => prev.filter((_, i) => i !== index));
+      setHistorySessions(prev => {
+        const updatedSessions = prev.filter((_, i) => i !== index);
+        localStorage.setItem('historySessions', JSON.stringify(updatedSessions));
+        return updatedSessions;
+      });
     } else {
-      setAiSessions(prev => prev.filter((_, i) => i !== index));
+      setAiSessions(prev => {
+        const updatedSessions = prev.filter((_, i) => i !== index);
+        localStorage.setItem('aiSessions', JSON.stringify(updatedSessions));
+        return updatedSessions;
+      });
     }
   };
 
@@ -566,8 +573,14 @@ const App: React.FC = () => {
   const moveToHistory = (index: number) => {
     setAiSessions(prev => {
       const sessionToMove = prev[index];
-      setHistorySessions(prevHistory => [...prevHistory, sessionToMove]);
-      return prev.filter((_, i) => i !== index);
+      const updatedSessions = prev.filter((_, i) => i !== index);
+      localStorage.setItem('aiSessions', JSON.stringify(updatedSessions));
+      setHistorySessions(prevHistory => {
+        const updatedHistory = [...prevHistory, sessionToMove];
+        localStorage.setItem('historySessions', JSON.stringify(updatedHistory));
+        return updatedHistory;
+      });
+      return updatedSessions;
     });
   };
 
@@ -595,10 +608,10 @@ const App: React.FC = () => {
     setAiSessions(prev => {
       const updatedSessions = [...prev, newSession];
       console.log('Updated sessions:', updatedSessions);
-      return [...prev, newSession];
+      localStorage.setItem('aiSessions', JSON.stringify(updatedSessions));
+      return updatedSessions;
     });
     setActiveTab('current'); // Ensure we're on the current tab
-    setActiveSessionIndex(null); // Reset active session index
   };
 
   const formatCodeBlock = (text: string): React.ReactNode => {
@@ -676,12 +689,48 @@ const App: React.FC = () => {
             <div style={{ marginBottom: '20px' }}>
               <h3 style={{ fontSize: '1.2rem', marginBottom: '10px' }}>Session {index + 1}</h3>
               {activeTab === 'current' && (
-                <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', justifyContent: 'space-between' }}>
                   <button
                     onClick={() => toggleListening(session.id)}
                     style={styles.button}
                   >
                     {session.isListening ? 'Stop Listening' : 'Start Listening'}
+                  </button>
+                  <div style={{ display: 'flex', gap: '5px' }}>
+                    <button
+                      onClick={() => deleteSession(index)}
+                      style={{
+                        ...styles.button,
+                        padding: '5px 10px',
+                        background: 'linear-gradient(to right, #EF4444, #DC2626)',
+                      }}
+                    >
+                      ✕
+                    </button>
+                    <button
+                      onClick={() => moveToHistory(index)}
+                      style={{
+                        ...styles.button,
+                        padding: '5px 10px',
+                        background: 'linear-gradient(to right, #8B5CF6, #7C3AED)',
+                      }}
+                    >
+                      📚
+                    </button>
+                  </div>
+                </div>
+              )}
+              {activeTab === 'history' && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '15px' }}>
+                  <button
+                    onClick={() => deleteSession(index, true)}
+                    style={{
+                      ...styles.button,
+                      padding: '5px 10px',
+                      background: 'linear-gradient(to right, #EF4444, #DC2626)',
+                    }}
+                  >
+                    ✕
                   </button>
                 </div>
               )}
