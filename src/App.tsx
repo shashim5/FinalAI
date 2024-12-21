@@ -12,6 +12,31 @@ interface AISession {
   lastSimulationStep: number;
 }
 
+interface SpeechRecognitionEvent {
+  results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognitionResult {
+  [index: number]: SpeechRecognitionAlternative;
+  length: number;
+  isFinal: boolean;
+}
+
+interface SpeechRecognitionAlternative {
+  transcript: string;
+  confidence: number;
+}
+
+interface SpeechRecognitionResultList {
+  [index: number]: SpeechRecognitionResult;
+  length: number;
+}
+
+interface SpeechRecognitionError extends Event {
+  error: string;
+  message: string;
+}
+
 const API_KEY = 'AIzaSyDfbugjoSRGIb40hn4JoxT8kLL39tIzCzM';
 const genAI = new GoogleGenerativeAI(API_KEY);
 const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
@@ -183,7 +208,7 @@ const App: React.FC = () => {
   const [isRecording, setIsRecording] = useState<boolean>(false);
 
   const recognitionRef = useRef<any>(null);
-  const lastTranscriptRef = useRef('');
+  const lastTranscriptRef = useRef<string>('');
   const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const simulationIntervalRef = useRef<number | null>(null);
 
@@ -374,14 +399,14 @@ const App: React.FC = () => {
             ));
           };
 
-          recognition.onresult = (event: any) => {
-            const currentSession = aiSessions.find(s => s.id === sessionId);
+          recognition.onresult = (event: SpeechRecognitionEvent) => {
+            const currentSession = aiSessions.find((s: AISession) => s.id === sessionId);
             if (!currentSession?.isListening) return; // Don't process if stopped
 
             const existingTranscript = currentSession?.transcript || '';
             let newTranscript = Array.from(event.results)
-              .map((result: any) => result[0])
-              .map((result: any) => result.transcript)
+              .map((result: SpeechRecognitionResult) => result[0])
+              .map((result: SpeechRecognitionAlternative) => result.transcript)
               .join('');
 
             // Clear any existing processing timeout
@@ -393,7 +418,7 @@ const App: React.FC = () => {
             const fullTranscript = existingTranscript + ' ' + newTranscript;
 
             // Update UI with current transcript and recording state
-            setAiSessions(prev => prev.map(session =>
+            setAiSessions((prev: AISession[]) => prev.map((session: AISession) =>
               session.id === sessionId ? {
                 ...session,
                 transcript: fullTranscript.trim(),
@@ -407,12 +432,12 @@ const App: React.FC = () => {
 
             // Wait for a 2-second pause before processing
             processingTimeoutRef.current = setTimeout(async () => {
-              const updatedSession = aiSessions.find(s => s.id === sessionId);
+              const updatedSession = aiSessions.find((s: AISession) => s.id === sessionId);
               if (updatedSession?.isListening &&
                   fullTranscript.trim().length > 10 &&
                   fullTranscript !== lastTranscriptRef.current) {
                 lastTranscriptRef.current = fullTranscript;
-                setAiSessions(prev => prev.map(session =>
+                setAiSessions((prev: AISession[]) => prev.map((session: AISession) =>
                   session.id === sessionId ? {
                     ...session,
                     response: '💭 Processing your input...',
@@ -422,7 +447,7 @@ const App: React.FC = () => {
                   } : session
                 ));
                 const response = await generateAIResponse(fullTranscript);
-                setAiSessions(prev => prev.map(session =>
+                setAiSessions((prev: AISession[]) => prev.map((session: AISession) =>
                   session.id === sessionId ? {
                     ...session,
                     question: fullTranscript,
