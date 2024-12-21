@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import hljs from 'highlight.js';
 import { AudioBridge } from './audio/audioBridge';
+import { generateResponse } from './services/aiService';
 import 'highlight.js/styles/github-dark.css';
 
 interface AISession {
@@ -11,10 +11,6 @@ interface AISession {
   isListening: boolean;
   transcript: string;
 }
-
-const API_KEY = 'AIzaSyDfbugjoSRGIb40hn4JoxT8kLL39tIzCzM';
-const genAI = new GoogleGenerativeAI(API_KEY);
-const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
 
 const styles = {
   container: {
@@ -164,12 +160,21 @@ const App: React.FC = () => {
 
         if (isFinal && processingTimeoutRef.current === null) {
           processingTimeoutRef.current = setTimeout(async () => {
-            const response = await generateAIResponse(transcript);
-            setAiSessions(prev => prev.map(session =>
-              session.id === currentSessionId
-                ? { ...session, response }
-                : session
-            ));
+            try {
+              const response = await generateResponse(transcript);
+              setAiSessions(prev => prev.map(session =>
+                session.id === currentSessionId
+                  ? { ...session, response }
+                  : session
+              ));
+            } catch (error) {
+              console.error('Failed to generate AI response:', error);
+              setAiSessions(prev => prev.map(session =>
+                session.id === currentSessionId
+                  ? { ...session, response: 'Failed to generate response. Please try again.' }
+                  : session
+              ));
+            }
             processingTimeoutRef.current = null;
           }, 2000);
         }
@@ -193,17 +198,6 @@ const App: React.FC = () => {
       }
     };
   }, [currentSessionId]);
-
-  const generateAIResponse = async (text: string): Promise<string> => {
-    try {
-      const result = await model.generateContent(text);
-      const response = result.response;
-      return response.text();
-    } catch (error) {
-      console.error('Error generating AI response:', error);
-      return 'Error generating response. Please try again.';
-    }
-  };
 
   const startListening = useCallback((sessionId: string) => {
     setAiSessions(prev => prev.map(session =>

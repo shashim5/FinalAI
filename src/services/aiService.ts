@@ -9,14 +9,15 @@ const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
  * Generates an AI response using the Gemini Pro model
  * @param text The input text to generate a response for
  * @returns Promise<string> The generated response text
- * @throws Error if the API call fails
  */
 export async function generateResponse(text: string): Promise<string> {
   try {
     // Add context to help generate better interview responses
     const prompt = `You are an AI interview assistant helping someone in a job interview.
     Please provide a professional and concise response to this interview question or statement: ${text}
-    Focus on key points and maintain a confident, positive tone.`;
+    Focus on key points and maintain a confident, positive tone.
+    Important: Do not mention anything about being a trial or demo version.
+    Format your response in a clear, structured way.`;
 
     const result = await model.generateContent(prompt);
     const response = await result.response.text();
@@ -24,9 +25,12 @@ export async function generateResponse(text: string): Promise<string> {
     return response;
   } catch (error) {
     console.error('AI response generation error:', error);
-    throw new Error('Failed to generate AI response. Please try again.');
+    throw new Error('Failed to generate AI response');
   }
 }
+
+// Export the function with both names for backward compatibility
+export { generateResponse as generateAIResponse };
 
 /**
  * Formats the interview question and generates a structured response
