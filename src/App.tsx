@@ -10,6 +10,7 @@ interface AISession {
   response: string;
   isListening: boolean;
   transcript: string;
+  inputType: 'microphone' | 'system';
 }
 
 const styles = {
@@ -135,14 +136,21 @@ const styles = {
 const App: React.FC = () => {
   const [aiSessions, setAiSessions] = useState<AISession[]>(() => {
     const savedSessions = localStorage.getItem('aiSessions');
-    return savedSessions ? JSON.parse(savedSessions) : [];
+    return savedSessions ? JSON.parse(savedSessions).map((session: any) => ({
+      ...session,
+      inputType: session.inputType || 'microphone' // Add default for backward compatibility
+    })) : [];
   });
   const [historySessions, setHistorySessions] = useState<AISession[]>(() => {
     const savedHistory = localStorage.getItem('historySessions');
-    return savedHistory ? JSON.parse(savedHistory) : [];
+    return savedHistory ? JSON.parse(savedHistory).map((session: any) => ({
+      ...session,
+      inputType: session.inputType || 'microphone' // Add default for backward compatibility
+    })) : [];
   });
   const [activeTab, setActiveTab] = useState<'current' | 'history'>('current');
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [inputType, setInputType] = useState<'microphone' | 'system'>('microphone');
   const [error, setError] = useState<string | null>(null);
 
   const audioBridgeRef = useRef<AudioBridge | null>(null);
@@ -201,72 +209,66 @@ const App: React.FC = () => {
   }, [currentSessionId]);
 
   const startListening = useCallback((sessionId: string) => {
-    setAiSessions(prev => prev.map(session =>
-      session.id === sessionId ? {
-        ...session,
-        isListening: true,
-        response: '🎤 Starting audio capture...'
-      } : session
-    ));
+    setAiSessions(prev => {
+      const session = prev.find(s => s.id === sessionId);
+      if (!session) return prev;
+
+      const updatedSessions = prev.map(s =>
+        s.id === sessionId ? {
+          ...s,
+          isListening: true,
+          response: '🎙️ Starting audio capture...'
+        } : s
+      );
+
+      if (session.inputType === 'microphone') {
+        audioBridgeRef.current?.connectMicrophone().catch(error => {
+          console.error('Failed to start microphone:', error);
+          setError('Failed to access microphone. Please ensure microphone permissions are granted.');
+          setAiSessions(prev => prev.map(s =>
+            s.id === sessionId ? {
+              ...s,
+              isListening: false,
+              response: '❌ Failed to access microphone. Please ensure microphone permissions are granted.'
+            } : s
+          ));
+        });
+      } else {
+        // Request screen sharing with audio
+        navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            sampleRate: 44100
+          }
+        }).then(stream => {
+          const audioTrack = stream.getAudioTracks()[0];
+          if (!audioTrack) {
+            throw new Error('No audio track found. Please ensure you enabled system audio sharing.');
+          }
+          const audioStream = new MediaStream([audioTrack]);
+          audioBridgeRef.current?.connectStream(audioStream);
+          // Clean up video track since we don't need it
+          stream.getVideoTracks().forEach(track => track.stop());
+        }).catch(error => {
+          console.error('Failed to capture system audio:', error);
+          setError('Failed to capture system audio. Please ensure you enable system audio sharing when prompted.');
+          setAiSessions(prev => prev.map(s =>
+            s.id === sessionId ? {
+              ...s,
+              isListening: false,
+              response: '❌ Failed to capture system audio. Please try again and make sure to enable system audio sharing.'
+            } : s
+          ));
+        });
+      }
+
+      return updatedSessions;
+    });
     setCurrentSessionId(sessionId);
     setError(null);
-
-    // Request screen sharing with audio
-    navigator.mediaDevices.getDisplayMedia({
-      video: true,
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        sampleRate: 44100,
-      }
-    })
-    .then(async (stream) => {
-      try {
-        // Get the audio track from the screen share
-        const audioTrack = stream.getAudioTracks()[0];
-        if (!audioTrack) {
-          throw new Error('No audio track found in screen share. Please ensure you enabled system audio sharing.');
-        }
-
-        // Create a new MediaStream with just the audio track
-        const audioStream = new MediaStream([audioTrack]);
-
-        // Connect the audio stream to the AudioBridge
-        await audioBridgeRef.current?.connectStream(audioStream);
-
-        setAiSessions(prev => prev.map(session =>
-          session.id === sessionId ? {
-            ...session,
-            response: '🎤 Recording in progress... (Click Stop to pause)'
-          } : session
-        ));
-
-        // Clean up video track since we don't need it
-        stream.getVideoTracks().forEach(track => track.stop());
-      } catch (error) {
-        console.error('Failed to connect audio stream:', error);
-        setAiSessions(prev => prev.map(session =>
-          session.id === sessionId ? {
-            ...session,
-            isListening: false,
-            response: '❌ Failed to connect audio stream. Please ensure you enabled system audio sharing when prompted.'
-          } : session
-        ));
-        setError('Failed to capture system audio. Please ensure you enable system audio sharing when prompted.');
-      }
-    })
-    .catch((error) => {
-      console.error('Failed to capture screen:', error);
-      setAiSessions(prev => prev.map(session =>
-        session.id === sessionId ? {
-          ...session,
-          isListening: false,
-          response: '❌ Failed to capture screen. Please allow screen sharing and enable system audio when prompted.'
-        } : session
-      ));
-      setError('Failed to capture screen. Please try again and make sure to enable system audio sharing.');
-    });
-  }, [setAiSessions, setCurrentSessionId]);
+  }, []);
 
   const stopListening = useCallback((sessionId: string) => {
     audioBridgeRef.current?.stop();
@@ -281,18 +283,20 @@ const App: React.FC = () => {
       } : session
     ));
     localStorage.setItem('aiSessions', JSON.stringify(aiSessions));
-  }, [aiSessions]);
+  }, []);
 
   const toggleListening = useCallback((sessionId: string) => {
-    const session = aiSessions.find(s => s.id === sessionId);
-    if (session?.isListening) {
-      setCurrentSessionId(null);
-      stopListening(sessionId);
-    } else {
-      setCurrentSessionId(sessionId);
-      startListening(sessionId);
-    }
-  }, [aiSessions, startListening, stopListening]);
+    setAiSessions(prev => {
+      const session = prev.find(s => s.id === sessionId);
+      if (!session?.isListening) {
+        startListening(sessionId);
+      } else {
+        setCurrentSessionId(null);
+        stopListening(sessionId);
+      }
+      return prev;
+    });
+  }, [startListening, stopListening]);
 
   const deleteSession = (index: number, isHistory: boolean = false) => {
     if (isHistory) {
@@ -384,13 +388,14 @@ const App: React.FC = () => {
     };
   }, []);
 
-  const addNewSession = async () => {
+  const addNewSession = () => {
     const newSession: AISession = {
       id: Math.random().toString(36).substr(2, 9),
       question: '',
       response: '🎙️ Click "Start Listening" to begin recording your interview questions.',
       isListening: false,
       transcript: '',
+      inputType: inputType // Use selected input type
     };
     setAiSessions(prev => {
       const updatedSessions = [...prev, newSession];
@@ -443,6 +448,30 @@ const App: React.FC = () => {
             {error}
           </div>
         )}
+      </div>
+
+      <div style={{ display: 'flex', gap: '20px', marginBottom: '20px', alignItems: 'center', justifyContent: 'center' }}>
+        <button
+          onClick={() => setInputType('microphone')}
+          style={{
+            ...styles.button,
+            background: inputType === 'microphone' ? 'linear-gradient(to right, #3B82F6, #2563EB)' : '#374151',
+          }}
+        >
+          🎤 Microphone Input
+        </button>
+        <button
+          onClick={() => setInputType('system')}
+          style={{
+            ...styles.button,
+            background: inputType === 'system' ? 'linear-gradient(to right, #3B82F6, #2563EB)' : '#374151',
+            opacity: 0.5, // Disabled for now
+            cursor: 'not-allowed',
+          }}
+          disabled={true}
+        >
+          🔊 System Audio (Coming Soon)
+        </button>
       </div>
 
       <div style={{ display: 'flex', gap: '20px', marginBottom: '20px', alignItems: 'center' }}>

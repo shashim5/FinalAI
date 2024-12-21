@@ -38,6 +38,26 @@ export class AudioBridge {
     };
   }
 
+  async connectMicrophone(): Promise<void> {
+    if (!this.recognition) {
+      throw new AudioCaptureError('Speech recognition not supported');
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 44100
+        }
+      });
+
+      await this.connectStream(stream);
+    } catch (error) {
+      throw new AudioCaptureError('Failed to access microphone. Please ensure microphone permissions are granted.', error as Error);
+    }
+  }
+
   async connectStream(stream: MediaStream): Promise<void> {
     if (!this.recognition) {
       throw new AudioCaptureError('Speech recognition not supported');
