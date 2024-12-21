@@ -1,4 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.container {
+  @apply min-h-screen p-10 bg-slate-900 font-sans flex flex-col items-center gap-16 relative;
+  background-image: radial-gradient(circle at 50% 50%, #0f172a 0%, #020617 100%);
+}
+
+.header {
+  @apply text-center text-white text-4xl font-bold mb-5;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.transcript-area {
+  @apply w-full max-w-3xl p-8 bg-gradient-to-b from-gray-800 to-gray-900 rounded-3xl text-white shadow-2xl border border-white/10 text-lg relative z-10;
+  backdrop-filter: blur(12px);
+}
+
 .horizontal-scroll-container {
+  @apply w-full max-w-screen-xl overflow-x-auto flex gap-8 p-10 pb-16 relative scroll-smooth;
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
@@ -7,27 +27,50 @@
   display: none;
 }
 
-.scroll-fade-edges {
-  mask-image: linear-gradient(to right, transparent, black 40px, black calc(100% - 40px), transparent);
-  -webkit-mask-image: linear-gradient(to right, transparent, black 40px, black calc(100% - 40px), transparent);
+.ai-card {
+  @apply min-w-[350px] max-w-[350px] h-fit min-h-[200px] p-5 bg-gradient-to-b from-gray-800 to-gray-900 rounded-3xl text-white shadow-2xl border border-white/10 text-lg relative flex-none z-10 mb-5;
+  backdrop-filter: blur(12px);
+  scroll-snap-align: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-button {
+  @apply absolute top-2.5 bg-black/80 border-2 border-white/30 cursor-pointer w-9 h-9 flex items-center justify-center text-xl text-white transition-all duration-200 z-50 rounded-full shadow-lg;
+}
+
+.card-button:hover {
+  @apply scale-110 shadow-xl;
+}
+
+.delete-button {
+  @apply right-2.5 bg-red-500/20;
+}
+
+.delete-button:hover {
+  @apply bg-red-500/40;
+}
+
+.history-button {
+  @apply right-14 bg-blue-500/20;
+}
+
+.history-button:hover {
+  @apply bg-blue-500/40;
+}
+
+.button {
+  @apply px-8 py-3.5 bg-gradient-to-b from-indigo-500 to-indigo-700 text-white border-none rounded-xl cursor-pointer text-lg font-semibold shadow-lg shadow-indigo-500/40 transition-all duration-200 w-full;
+}
+
+.add-button {
+  @apply fixed top-5 right-5 w-15 h-15 rounded-full bg-gradient-to-b from-indigo-500 to-indigo-700 text-white border-none text-2xl cursor-pointer flex items-center justify-center transition-transform duration-300 z-50 shadow-lg shadow-indigo-500/40;
+}
+
+.add-button:hover {
+  @apply scale-110 bg-gradient-to-b from-indigo-600 to-indigo-800;
 }
 
 .code-block {
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-  background: #1a1a1a;
-  padding: 1rem;
-  border-radius: 8px;
-  margin: 1rem 0;
-  white-space: pre;
-  overflow-x: auto;
+  @apply font-mono bg-gray-900 p-4 rounded-lg my-4 whitespace-pre overflow-x-auto;
 }
 
-.card {
-  scroll-snap-align: center;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  cursor: pointer;
-}
-
-.card:hover {
-  transform: translateY(-10px) scale(1.02);
-}

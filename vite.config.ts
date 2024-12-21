@@ -5,7 +5,13 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   build: {
-    target: 'es2015'
+    target: 'es2015',
+    rollupOptions: {
+      input: {
+        main: 'index.html',
+        audioProcessor: 'src/audioProcessor.js'
+      }
+    }
   },
   server: {
     host: '0.0.0.0',

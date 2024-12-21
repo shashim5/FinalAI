@@ -8,7 +8,7 @@ export class SystemAudioCapture {
   async initialize(): Promise<void> {
     try {
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      await this.audioContext.audioWorklet.addModule('/audioProcessor.js');
+      await this.audioContext.audioWorklet.addModule('../audioProcessor.js');
       this.workletNode = new AudioWorkletNode(this.audioContext, 'audio-processor');
     } catch (error) {
       throw new AudioCaptureError('Failed to initialize audio system', error as Error);
