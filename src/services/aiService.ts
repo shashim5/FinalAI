@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI, GenerationConfig } from '@google/generative-ai';
 
 // Initialize the Gemini Pro model with proper configuration
-const API_KEY = process.env.GOOGLE_API_KEY || 'AIzaSyAsHiGJ-WfUdUrj8liocBlF6SG5FAKNBUM';
+const API_KEY = process.env.GOOGLE_API_KEY || 'invalid_key_for_testing';
 
 // Configure the model with specific parameters to improve response quality
 const modelConfig: GenerationConfig = {
