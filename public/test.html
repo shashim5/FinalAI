@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Audio Test Page</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        button { padding: 10px; margin: 10px; }
+        #controls { margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <h1>Audio Test Page</h1>
+    <div id="controls">
+        <button onclick="playAudio()">Play Test Audio</button>
+        <button onclick="stopAudio()">Stop Audio</button>
+    </div>
+    <audio id="testAudio">
+        <source src="https://www2.cs.uic.edu/~i101/SoundFiles/StarWars60.wav" type="audio/wav">
+        Your browser does not support the audio element.
+    </audio>
+    <script>
+        let audio = document.getElementById('testAudio');
+
+        function playAudio() {
+            audio.play();
+        }
+
+        function stopAudio() {
+            audio.pause();
+            audio.currentTime = 0;
+        }
+    </script>
+</body>
+</html>

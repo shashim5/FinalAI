@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Interview AI Helper Audio Capture",
+  "version": "1.0",
+  "description": "Captures system audio for the Interview AI Helper application",
+  "permissions": [
+    "audioCapture",
+    "tabCapture",
+    "system.audio",
+    "scripting"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*/*"],
+      "js": ["content.js"]
+    }
+  ],
+  "host_permissions": [
+    "*://*/*"
+  ],
+  "icons": {
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}
