@@ -66,10 +66,17 @@ const styles = {
     backdropFilter: 'blur(16px)',
     color: '#fff',
     scrollSnapAlign: 'center',
+    position: 'sticky',
+    top: '20px',
+    transformOrigin: 'center top',
     transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
     cursor: 'pointer',
     '&:hover': {
       transform: 'scale(1.02)',
+    },
+    '&.scrolled': {
+      transform: 'scale(0.95)',
+      opacity: 0.8,
     },
   },
   button: {
@@ -585,6 +592,20 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
+    const handleScroll = () => {
+      const cards = document.querySelectorAll('[data-card]');
+      cards.forEach((card) => {
+        const rect = card.getBoundingClientRect();
+        const scrolled = rect.top < 0;
+        card.classList.toggle('scrolled', scrolled);
+      });
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
     console.log('State updated - activeTab:', activeTab);
     console.log('State updated - aiSessions:', aiSessions);
     return () => {
@@ -685,7 +706,7 @@ const App: React.FC = () => {
 
       <div style={styles.horizontalScroll}>
         {(activeTab === 'current' ? aiSessions : historySessions).map((session, index) => (
-          <div key={session.id} style={styles.aiCard}>
+          <div key={session.id} style={styles.aiCard} data-card>
             <div style={{ marginBottom: '20px' }}>
               <h3 style={{ fontSize: '1.2rem', marginBottom: '10px' }}>Session {index + 1}</h3>
               {activeTab === 'current' && (
