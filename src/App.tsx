@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import hljs from 'highlight.js';
 import { AudioBridge } from './audio/audioBridge';
-import { generateResponse, generateStructuredResponse } from './services/aiService';
+import { generateResponse } from './services/aiService';
 import 'highlight.js/styles/github-dark.css';
 
 interface AISession {
@@ -438,6 +438,11 @@ const App: React.FC = () => {
       <div style={styles.header}>
         <h1>Interview AI Helper</h1>
         <p>Your real-time interview assistant</p>
+        {error && (
+          <div style={{ color: '#EF4444', marginTop: '10px', padding: '10px', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: '4px' }}>
+            {error}
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: '20px', marginBottom: '20px', alignItems: 'center' }}>
