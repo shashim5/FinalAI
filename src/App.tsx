@@ -16,6 +16,116 @@ const API_KEY = 'AIzaSyDfbugjoSRGIb40hn4JoxT8kLL39tIzCzM';
 const genAI = new GoogleGenerativeAI(API_KEY);
 const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
 
+const styles = {
+  container: {
+    minHeight: '100vh',
+    padding: '40px 20px',
+    backgroundColor: '#020617',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    backgroundImage: 'radial-gradient(circle at 50% 50%, #0f172a 0%, #020617 100%)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '60px',
+    position: 'relative',
+  },
+  header: {
+    textAlign: 'center',
+    color: '#fff',
+    '& h1': {
+      fontSize: '2.5rem',
+      marginBottom: '1rem',
+    },
+    '& p': {
+      fontSize: '1.2rem',
+      opacity: 0.8,
+    },
+  },
+  horizontalScroll: {
+    width: '100%',
+    maxWidth: '100vw',
+    overflowX: 'auto',
+    display: 'flex',
+    gap: '30px',
+    padding: '20px 0',
+    scrollSnapType: 'x mandatory',
+    scrollBehavior: 'smooth',
+    '&::-webkit-scrollbar': {
+      display: 'none',
+    },
+  },
+  aiCard: {
+    minWidth: '350px',
+    maxWidth: '350px',
+    height: 'fit-content',
+    minHeight: '200px',
+    padding: '20px',
+    background: 'linear-gradient(to bottom, #1F2937, #111827)',
+    borderRadius: '24px',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+    backdropFilter: 'blur(16px)',
+    color: '#fff',
+    scrollSnapAlign: 'center',
+    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+    cursor: 'pointer',
+    '&:hover': {
+      transform: 'scale(1.02)',
+    },
+  },
+  button: {
+    padding: '10px 20px',
+    borderRadius: '12px',
+    border: 'none',
+    background: 'linear-gradient(to right, #3B82F6, #2563EB)',
+    color: '#fff',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    '&:hover': {
+      transform: 'scale(1.05)',
+      background: 'linear-gradient(to right, #2563EB, #1D4ED8)',
+    },
+    '&:disabled': {
+      opacity: 0.5,
+      cursor: 'not-allowed',
+      transform: 'none',
+    },
+  },
+  addButton: {
+    position: 'fixed',
+    top: '20px',
+    right: '20px',
+    width: '60px',
+    height: '60px',
+    borderRadius: '50%',
+    background: 'linear-gradient(to right bottom, #3B82F6, #2563EB)',
+    color: '#fff',
+    fontSize: '2rem',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    border: 'none',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+    transition: 'all 0.2s ease',
+    '&:hover': {
+      transform: 'scale(1.1)',
+      background: 'linear-gradient(to right bottom, #2563EB, #1D4ED8)',
+    },
+  },
+  codeBlock: {
+    background: '#1a1a1a',
+    borderRadius: '8px',
+    padding: '1rem',
+    margin: '1rem 0',
+    overflowX: 'auto',
+    fontSize: '0.9rem',
+    lineHeight: '1.5',
+    '& code': {
+      fontFamily: 'monospace',
+    },
+  },
+} as const;
+
 const App: React.FC = () => {
   const [aiSessions, setAiSessions] = useState<AISession[]>(() => {
     const savedSessions = localStorage.getItem('aiSessions');
@@ -497,7 +607,7 @@ const App: React.FC = () => {
       try {
         const highlighted = hljs.highlightAuto(codeContent);
         return (
-          <pre className="code-block">
+          <pre style={styles.codeBlock}>
             <code
               dangerouslySetInnerHTML={{ __html: highlighted.value }}
               style={{
@@ -510,143 +620,88 @@ const App: React.FC = () => {
           </pre>
         );
       } catch (error) {
-        return <pre className="code-block"><code>{codeContent}</code></pre>;
+        return <pre style={styles.codeBlock}><code>{codeContent}</code></pre>;
       }
     }
     return text;
   };
 
   return (
-    <div className="container">
+    <div style={styles.container}>
       <button
         onClick={addNewSession}
-        className="add-button"
+        style={styles.addButton}
         devin-id="0"
       >
         +
       </button>
 
-      <div className="header">
+      <div style={styles.header}>
         <h1>Interview AI Helper</h1>
         <p>Your real-time interview assistant</p>
       </div>
 
-      <div className="flex gap-5 mb-5 items-center">
+      <div style={{ display: 'flex', gap: '20px', marginBottom: '20px', alignItems: 'center' }}>
         {currentSessionId && (
           <button
             onClick={() => stopSession(currentSessionId)}
-            className="button bg-red-500 hover:bg-red-600 mr-5"
+            style={styles.button}
           >
             Stop Session
           </button>
         )}
         <button
           onClick={() => setActiveTab('current')}
-          className={`button ${activeTab === 'current' ? 'opacity-100' : 'opacity-70'}`}
+          style={{
+            ...styles.button,
+            background: activeTab === 'current' ? 'linear-gradient(to right, #3B82F6, #2563EB)' : '#374151',
+          }}
         >
-          Current Session
+          Current Sessions
         </button>
         <button
           onClick={() => setActiveTab('history')}
-          className={`button ${activeTab === 'history' ? 'opacity-100' : 'opacity-70'}`}
+          style={{
+            ...styles.button,
+            background: activeTab === 'history' ? 'linear-gradient(to right, #3B82F6, #2563EB)' : '#374151',
+          }}
         >
           History
         </button>
       </div>
 
-      <div className="horizontal-scroll-container">
-        {activeTab === 'current' && (
-          <div className="flex gap-5 p-5 overflow-x-auto">
-            {aiSessions.map((session, index) => (
-              <div
-                key={session.id}
-                className={`ai-card ${session.id === currentSessionId ? 'border-2 border-green-500 shadow-green-500/30' : ''}
-                  ${session.isListening ? 'opacity-100' : 'opacity-80'}`}
-              >
-                <div className="flex justify-end gap-2.5 p-2.5">
+      <div style={styles.horizontalScroll}>
+        {(activeTab === 'current' ? aiSessions : historySessions).map((session, index) => (
+          <div key={session.id} style={styles.aiCard}>
+            <div style={{ marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '1.2rem', marginBottom: '10px' }}>Session {index + 1}</h3>
+              {activeTab === 'current' && (
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
                   <button
-                    className="card-button delete-button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteSession(index);
-                    }}
-                    title="Delete session"
+                    onClick={() => toggleListening(session.id)}
+                    style={styles.button}
                   >
-                    ✕
-                  </button>
-                  <button
-                    className="card-button history-button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      moveToHistory(index);
-                    }}
-                    title="Move to history"
-                  >
-                    📚
+                    {session.isListening ? 'Stop Listening' : 'Start Listening'}
                   </button>
                 </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleListening(session.id);
-                  }}
-                  className={`button m-2.5 ${session.id === currentSessionId ? 'bg-green-500 hover:bg-green-600' : ''}`}
-                >
-                  {session.id === currentSessionId ? 'Stop Listening' : 'Start Listening'}
-                </button>
-                <div
-                  onClick={() => setActiveSessionIndex(activeSessionIndex === index ? null : index)}
-                  className="p-2.5"
-                >
-                  <h3>Session {index + 1}</h3>
-                  {session.id === currentSessionId && <p className="text-green-500">🎤 Recording...</p>}
-                  {activeSessionIndex === index ? (
-                    <>
-                      <h4>Question:</h4>
-                      <p>{session.question || session.transcript}</p>
-                      <h4>Response:</h4>
-                      <div>{formatCodeBlock(session.response)}</div>
-                    </>
-                  ) : (
-                    <p>Click to view content</p>
-                  )}
-                </div>
+              )}
+            </div>
+            {session.transcript && (
+              <div style={{ marginBottom: '15px' }}>
+                <strong>Transcript:</strong>
+                <p style={{ marginTop: '5px', opacity: 0.8 }}>{session.transcript}</p>
               </div>
-            ))}
-          </div>
-        )}
-        {activeTab === 'history' && (
-          historySessions.map((session, index) => (
-            <div
-              key={session.id}
-              className="ai-card"
-            >
-              <button
-                className="card-button delete-button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deleteSession(index, true);
-                }}
-                title="Delete session"
-              >
-                ✕
-              </button>
-              <div onClick={() => setActiveSessionIndex(activeSessionIndex === index ? null : index)}>
-                <h3>History Session {index + 1}</h3>
-                {activeSessionIndex === index ? (
-                  <>
-                    <h4>Question:</h4>
-                    <p>{session.question}</p>
-                    <h4>Response:</h4>
-                    <div>{formatCodeBlock(session.response)}</div>
-                  </>
-                ) : (
-                  <p>Click to view content</p>
-                )}
+            )}
+            <div>
+              <strong>Response:</strong>
+              <div style={{ marginTop: '5px', whiteSpace: 'pre-wrap' }}>
+                {typeof session.response === 'string'
+                  ? formatCodeBlock(session.response)
+                  : session.response}
               </div>
             </div>
-          ))
-        )}
+          </div>
+        ))}
       </div>
     </div>
   );
