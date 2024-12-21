@@ -5,13 +5,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   build: {
-    target: 'es2015',
-    rollupOptions: {
-      input: {
-        main: './index.html',
-        test: './src/test.html'
-      }
-    }
+    target: 'es2015'
   },
   resolve: {
     extensions: ['.ts', '.js']
