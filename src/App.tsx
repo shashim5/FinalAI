@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import hljs from 'highlight.js';
 import { AudioBridge } from './audio/audioBridge';
-import { generateResponse } from './services/aiService';
+import { generateResponse, generateStructuredResponse } from './services/aiService';
 import 'highlight.js/styles/github-dark.css';
 
 interface AISession {
@@ -143,6 +143,7 @@ const App: React.FC = () => {
   });
   const [activeTab, setActiveTab] = useState<'current' | 'history'>('current');
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const audioBridgeRef = useRef<AudioBridge | null>(null);
   const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -208,9 +209,11 @@ const App: React.FC = () => {
       } : session
     ));
     setCurrentSessionId(sessionId);
+    setError(null);
 
-    // Simplified permission flow - single prompt for audio
-    navigator.mediaDevices.getUserMedia({
+    // Request screen sharing with audio
+    navigator.mediaDevices.getDisplayMedia({
+      video: true,
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
@@ -219,33 +222,49 @@ const App: React.FC = () => {
     })
     .then(async (stream) => {
       try {
-        await audioBridgeRef.current?.connectStream(stream);
+        // Get the audio track from the screen share
+        const audioTrack = stream.getAudioTracks()[0];
+        if (!audioTrack) {
+          throw new Error('No audio track found in screen share. Please ensure you enabled system audio sharing.');
+        }
+
+        // Create a new MediaStream with just the audio track
+        const audioStream = new MediaStream([audioTrack]);
+
+        // Connect the audio stream to the AudioBridge
+        await audioBridgeRef.current?.connectStream(audioStream);
+
         setAiSessions(prev => prev.map(session =>
           session.id === sessionId ? {
             ...session,
             response: '🎤 Recording in progress... (Click Stop to pause)'
           } : session
         ));
+
+        // Clean up video track since we don't need it
+        stream.getVideoTracks().forEach(track => track.stop());
       } catch (error) {
         console.error('Failed to connect audio stream:', error);
         setAiSessions(prev => prev.map(session =>
           session.id === sessionId ? {
             ...session,
             isListening: false,
-            response: '❌ Failed to connect audio stream. Please try again.'
+            response: '❌ Failed to connect audio stream. Please ensure you enabled system audio sharing when prompted.'
           } : session
         ));
+        setError('Failed to capture system audio. Please ensure you enable system audio sharing when prompted.');
       }
     })
     .catch((error) => {
-      console.error('Failed to capture audio:', error);
+      console.error('Failed to capture screen:', error);
       setAiSessions(prev => prev.map(session =>
         session.id === sessionId ? {
           ...session,
           isListening: false,
-          response: '❌ Failed to capture audio. Please allow microphone access when prompted.'
+          response: '❌ Failed to capture screen. Please allow screen sharing and enable system audio when prompted.'
         } : session
       ));
+      setError('Failed to capture screen. Please try again and make sure to enable system audio sharing.');
     });
   }, [setAiSessions, setCurrentSessionId]);
 
