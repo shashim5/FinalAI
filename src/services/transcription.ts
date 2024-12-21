@@ -1,9 +1,17 @@
 import { audioCaptureService } from './audioCapture';
 import { SpeechRecognitionInstance, SpeechRecognitionEvent, SpeechRecognitionError } from '../types';
 
+type TranscriptionCallback = (transcript: string) => void;
+
 export class TranscriptionService {
   private recognition: SpeechRecognitionInstance | null = null;
   private isTranscribing: boolean = false;
+  private transcriptionCallbacks: TranscriptionCallback[] = [];
+  private currentTranscript: string = '';
+
+  public getCurrentTranscript(): string {
+    return this.currentTranscript;
+  }
 
   constructor() {
     if ('webkitSpeechRecognition' in window) {
@@ -12,6 +20,15 @@ export class TranscriptionService {
     } else {
       throw new Error('Speech recognition not supported in this browser');
     }
+  }
+
+  public onTranscription(callback: TranscriptionCallback): void {
+    this.transcriptionCallbacks.push(callback);
+  }
+
+  private emitTranscription(transcript: string): void {
+    this.currentTranscript = transcript;
+    this.transcriptionCallbacks.forEach(callback => callback(transcript));
   }
 
   private setupRecognition(): void {
@@ -29,8 +46,9 @@ export class TranscriptionService {
         }
       }
       
-      console.log('Transcribed text:', transcript.trim());
-      // Emit transcript or handle it as needed
+      const trimmedTranscript = transcript.trim();
+      console.log('Transcribed text:', trimmedTranscript);
+      this.emitTranscription(trimmedTranscript);
     };
 
     this.recognition.onerror = (event: SpeechRecognitionError) => {

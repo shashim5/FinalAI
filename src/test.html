@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Audio Transcription Test</title>
+</head>
+<body>
+    <h1>Audio Transcription Test</h1>
+    <button id="startBtn">Start Transcription</button>
+    <button id="stopBtn" disabled>Stop Transcription</button>
+    <div id="output"></div>
+
+    <script type="module">
+        import { audioCaptureService, transcriptionService } from './services/index.js';
+
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const output = document.getElementById('output');
+
+        // Subscribe to transcription updates
+        transcriptionService.onTranscription((transcript) => {
+            const p = document.createElement('p');
+            p.textContent = transcript;
+            output.appendChild(p);
+        });
+
+        startBtn.addEventListener('click', async () => {
+            try {
+                await transcriptionService.startTranscription();
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                output.textContent = 'Transcription started. Please share a window with audio...';
+            } catch (error) {
+                output.textContent = `Error: ${error.message}`;
+            }
+        });
+
+        stopBtn.addEventListener('click', () => {
+            transcriptionService.stopTranscription();
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            output.textContent += '\nTranscription stopped.';
+        });
+    </script>
+</body>
+</html>
