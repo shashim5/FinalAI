@@ -40,16 +40,7 @@ export class AudioBridge {
     }
 
     try {
-      // Create a new audio context
-      const audioContext = new AudioContext();
-      const source = audioContext.createMediaStreamSource(stream);
-
-      // Create and connect audio worklet
-      await audioContext.audioWorklet.addModule('/audioProcessor.js');
-      const workletNode = new AudioWorkletNode(audioContext, 'audio-processor');
-      source.connect(workletNode).connect(audioContext.destination);
-
-      // Connect the stream to the recognition
+      // Connect directly to recognition
       this.recognition.audioStream = stream;
 
       // Create a media recorder for backup

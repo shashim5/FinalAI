@@ -154,7 +154,7 @@ const App: React.FC = () => {
   useEffect(() => {
     audioBridgeRef.current = new AudioBridge();
 
-    audioBridgeRef.current.onTranscript((transcript, isFinal) => {
+    audioBridgeRef.current.onTranscript((transcript: string, isFinal: boolean) => {
       if (currentSessionId) {
         setAiSessions(prev => prev.map(session =>
           session.id === currentSessionId
@@ -176,7 +176,7 @@ const App: React.FC = () => {
       }
     });
 
-    audioBridgeRef.current.onError((error) => {
+    audioBridgeRef.current.onError((error: Error) => {
       console.error('Audio capture error:', error);
       setAiSessions(prev => prev.map(session =>
         session.id === currentSessionId
@@ -215,8 +215,8 @@ const App: React.FC = () => {
     ));
     setCurrentSessionId(sessionId);
 
-    navigator.mediaDevices.getDisplayMedia({
-      video: true,
+    // Simplified permission flow - single prompt for audio
+    navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
@@ -244,12 +244,12 @@ const App: React.FC = () => {
       }
     })
     .catch((error) => {
-      console.error('Failed to capture system audio:', error);
+      console.error('Failed to capture audio:', error);
       setAiSessions(prev => prev.map(session =>
         session.id === sessionId ? {
           ...session,
           isListening: false,
-          response: '❌ Failed to capture system audio. Please ensure you enable system audio sharing when prompted.'
+          response: '❌ Failed to capture audio. Please allow microphone access when prompted.'
         } : session
       ));
     });
