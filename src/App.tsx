@@ -460,7 +460,7 @@ const App: React.FC = () => {
             }, 2000); // 2-second debounce
           };
 
-          recognition.onerror = (event: any) => {
+          recognition.onerror = (event: SpeechRecognitionError) => {
             setIsRecording(false);
             console.error('Speech recognition error:', event.error);
             let errorMessage = 'An error occurred. ';
