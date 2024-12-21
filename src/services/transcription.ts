@@ -1,5 +1,7 @@
-import { audioCaptureService } from './audioCapture';
+import { AudioCaptureService } from './audioCapture';
 import { SpeechRecognitionInstance, SpeechRecognitionEvent, SpeechRecognitionError } from '../types';
+
+const audioCaptureService = new AudioCaptureService();
 
 type TranscriptionCallback = (transcript: string) => void;
 
@@ -92,4 +94,4 @@ export class TranscriptionService {
   }
 }
 
-export const transcriptionService = new TranscriptionService();
+// Service instance is exported from index.ts
